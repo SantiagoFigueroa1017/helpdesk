@@ -1,0 +1,7 @@
+# Perfil de pruebas. La conexion a MongoDB es perezosa: la prueba contextLoads
+# no necesita un servidor encendido. Testcontainers llega en la tarea 2.10.
+
+spring:
+  mongodb:
+    uri: mongodb://localhost:27017/?replicaSet=rs0
+    database: helpdesk_test

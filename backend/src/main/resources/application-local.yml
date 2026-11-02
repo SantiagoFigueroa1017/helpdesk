@@ -1,0 +1,6 @@
+# Perfil local: MongoDB 8.3.8 en este equipo, replica set rs0 de un nodo (acta 1.1).
+# No lleva credenciales. Se activa con: mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local
+
+spring:
+  mongodb:
+    uri: mongodb://localhost:27017/?replicaSet=rs0

@@ -1,0 +1,28 @@
+# Configuracion base del backend (tarea 2.1).
+# Perfil por defecto: dev (Atlas). Perfil local: replica set rs0 en localhost.
+# La cadena de Atlas lleva contrasena: va en el archivo .env, nunca en el repositorio.
+
+spring:
+  application:
+    name: helpdesk
+
+  # Lee backend/.env si existe (formato KEY=valor). El archivo esta en .gitignore.
+  config:
+    import: optional:file:.env[.properties]
+
+  profiles:
+    default: dev
+
+  # Spring Boot 4 movio la conexion de spring.data.mongodb.* a spring.mongodb.*
+  mongodb:
+    uri: ${MONGODB_URI}
+    database: helpdesk
+
+  # Lo que es propio de Spring Data sigue en spring.data.mongodb.*
+  data:
+    mongodb:
+      # Los indices los crea solo database/indices/00_indices.js (contexto 6.2).
+      auto-index-creation: false
+
+server:
+  port: 8080
