@@ -1,0 +1,954 @@
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/common/dominio/ModuloErp.java b/backend/src/main/java/co/edu/ufpso/helpdesk/common/dominio/ModuloErp.java
+new file mode 100644
+index 0000000..df7e922
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/common/dominio/ModuloErp.java
+@@ -0,0 +1,17 @@
++package co.edu.ufpso.helpdesk.common.dominio;
++
++/**
++ * Los 5 módulos del ERP/POS de Sistemas Integrados (contexto maestro, sección 3).
++ *
++ * <p>Lo usan tickets, membresias, articulos, capacitaciones y solicitudesCapacitacion. Vive en
++ * {@code common} porque un módulo no puede usar el {@code domain} de otro (regla de 2.2). Los
++ * nombres son exactamente los del enum de los validadores: Spring Data guarda el enum por su
++ * nombre.
++ */
++public enum ModuloErp {
++    VENTAS_ONLINE,
++    INVENTARIOS,
++    COMPRAS,
++    PRODUCCION,
++    VENTAS_EN_SITIO
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/common/package-info.java b/backend/src/main/java/co/edu/ufpso/helpdesk/common/package-info.java
+index 10d1448..93b4ac5 100644
+--- a/backend/src/main/java/co/edu/ufpso/helpdesk/common/package-info.java
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/common/package-info.java
+@@ -4,5 +4,7 @@
+  * que lanzan los servicios.
+  * <p>{@code common.paginacion}: respuesta {@code Pagina} de todo listado y reglas de
+  * tamaño y orden. La auditoría llegará aquí cuando haga falta.
++ * <p>{@code common.dominio}: tipos que comparten varios módulos, como {@code ModuloErp}. Viven
++ * aquí porque un módulo no puede usar el {@code domain} de otro.
+  */
+ package co.edu.ufpso.helpdesk.common;
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/config/MongoConfig.java b/backend/src/main/java/co/edu/ufpso/helpdesk/config/MongoConfig.java
+index cc63700..d8e747d 100644
+--- a/backend/src/main/java/co/edu/ufpso/helpdesk/config/MongoConfig.java
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/config/MongoConfig.java
+@@ -14,6 +14,8 @@ import org.springframework.data.mongodb.core.convert.MongoCustomConversions.BigD
+ import org.springframework.data.mongodb.core.convert.NoOpDbRefResolver;
+ import org.springframework.data.mongodb.core.mapping.MongoMappingContext;
+ 
++import co.edu.ufpso.helpdesk.tickets.repository.DetalleTicketLecturaConverter;
++
+ /**
+  * Configuracion de MongoDB.
+  *
+@@ -42,13 +44,14 @@ public class MongoConfig {
+ 
+     /**
+      * Conversiones propias. Reemplaza el bean de Boot (que solo aplica la propiedad de
+-     * representacion de BigDecimal). En 2.3 se agrega aqui el convertidor de lectura del
+-     * detalle de tickets con {@code configurer.registerConverter(...)}.
++     * representacion de BigDecimal). Aqui se registran los convertidores de lectura de los
++     * embebidos polimorficos: hoy solo tickets.detalle.
+      */
+     @Bean
+     MongoCustomConversions mongoCustomConversions() {
+-        return MongoCustomConversions.create(configurer ->
+-                configurer.bigDecimal(BigDecimalRepresentation.DECIMAL128));
++        return MongoCustomConversions.create(configurer -> configurer
++                .bigDecimal(BigDecimalRepresentation.DECIMAL128)
++                .registerConverter(new DetalleTicketLecturaConverter()));
+     }
+ 
+     /**
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/CambioEstado.java b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/CambioEstado.java
+new file mode 100644
+index 0000000..3104d54
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/CambioEstado.java
+@@ -0,0 +1,16 @@
++package co.edu.ufpso.helpdesk.tickets.domain;
++
++import java.time.Instant;
++
++import org.bson.types.ObjectId;
++
++/**
++ * Una entrada de {@code historialEstados}, embebida en el ticket (tope 50, HU23). La primera se
++ * escribe al crear el ticket, con estado ABIERTO.
++ *
++ * @param estado    estado al que pasó el ticket
++ * @param fecha     cuándo
++ * @param usuarioId quién hizo el cambio
++ */
++public record CambioEstado(EstadoTicket estado, Instant fecha, ObjectId usuarioId) {
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleCompras.java b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleCompras.java
+new file mode 100644
+index 0000000..82c5e83
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleCompras.java
+@@ -0,0 +1,32 @@
++package co.edu.ufpso.helpdesk.tickets.domain;
++
++import java.math.BigDecimal;
++
++import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
++
++/**
++ * Detalle de un incidente de Compras (campos decididos por el equipo en 1.2).
++ *
++ * @param nitProveedor           obligatorio, máximo 50
++ * @param etapa                  obligatorio
++ * @param numeroOrdenCompra      opcional, máximo 50
++ * @param numeroFacturaProveedor opcional, máximo 50
++ * @param montoInvolucrado       opcional. Se guarda como Decimal128 (MongoConfig)
++ */
++public record DetalleCompras(String nitProveedor, Etapa etapa, String numeroOrdenCompra,
++        String numeroFacturaProveedor, BigDecimal montoInvolucrado) implements DetalleTicket {
++
++    public static final String CAMPO_CLAVE = "nitProveedor";
++
++    public enum Etapa {
++        ORDEN_COMPRA,
++        RECEPCION,
++        CUENTA_POR_PAGAR,
++        PAGO_PROVEEDOR
++    }
++
++    @Override
++    public ModuloErp modulo() {
++        return ModuloErp.COMPRAS;
++    }
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleInventarios.java b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleInventarios.java
+new file mode 100644
+index 0000000..a9ec386
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleInventarios.java
+@@ -0,0 +1,31 @@
++package co.edu.ufpso.helpdesk.tickets.domain;
++
++import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
++
++/**
++ * Detalle de un incidente de Inventarios (campos decididos por el equipo en 1.2).
++ *
++ * @param codigoBodega      obligatorio, máximo 50
++ * @param codigoProducto    obligatorio, máximo 50
++ * @param tipoOperacion     obligatorio
++ * @param codigoBarras      opcional, máximo 50
++ * @param existenciaSistema opcional, int32 (puede ser negativo: es lo que muestra el sistema)
++ */
++public record DetalleInventarios(String codigoBodega, String codigoProducto, TipoOperacion tipoOperacion,
++        String codigoBarras, Integer existenciaSistema) implements DetalleTicket {
++
++    public static final String CAMPO_CLAVE = "codigoBodega";
++
++    public enum TipoOperacion {
++        ENTRADA,
++        SALIDA,
++        TRASLADO,
++        AJUSTE,
++        ALERTA_STOCK
++    }
++
++    @Override
++    public ModuloErp modulo() {
++        return ModuloErp.INVENTARIOS;
++    }
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleProduccion.java b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleProduccion.java
+new file mode 100644
+index 0000000..e1a8cc5
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleProduccion.java
+@@ -0,0 +1,32 @@
++package co.edu.ufpso.helpdesk.tickets.domain;
++
++import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
++
++/**
++ * Detalle de un incidente de Producción (campos del enunciado; fases decididas en 1.3).
++ *
++ * @param maquinariaId      obligatorio, máximo 50
++ * @param codigoLote        obligatorio, máximo 50
++ * @param faseProceso       obligatorio
++ * @param temperaturaSensor opcional. El validador exige double: el tipo {@code Double} lo
++ *                          garantiza aunque el valor sea entero (78.0)
++ */
++public record DetalleProduccion(String maquinariaId, String codigoLote, FaseProceso faseProceso,
++        Double temperaturaSensor) implements DetalleTicket {
++
++    public static final String CAMPO_CLAVE = "maquinariaId";
++
++    public enum FaseProceso {
++        PREPARACION,
++        MEZCLADO,
++        TRANSFORMACION,
++        CONTROL_CALIDAD,
++        EMPAQUE,
++        ALMACENAMIENTO
++    }
++
++    @Override
++    public ModuloErp modulo() {
++        return ModuloErp.PRODUCCION;
++    }
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleTicket.java b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleTicket.java
+new file mode 100644
+index 0000000..d96a8ad
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleTicket.java
+@@ -0,0 +1,20 @@
++package co.edu.ufpso.helpdesk.tickets.domain;
++
++import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
++
++/**
++ * Campos específicos del módulo del ERP en un incidente: la parte polimórfica del ticket.
++ *
++ * <p>Las sugerencias no llevan detalle (decisión de 1.2). Cada implementación corresponde a una
++ * rama del {@code oneOf} del validador de tickets y tiene los mismos campos.
++ *
++ * <p>Escritura: Spring Data guarda el record tal cual, sin {@code _class} (decisión de 2.3).
++ * Lectura: {@code DetalleTicketLecturaConverter} reconoce el tipo por su campo exclusivo, que el
++ * validador exige en su rama y prohíbe en las demás.
++ */
++public sealed interface DetalleTicket
++        permits DetalleVentasOnline, DetalleProduccion, DetalleInventarios, DetalleCompras, DetalleVentasEnSitio {
++
++    /** Módulo al que pertenece este detalle. Debe coincidir con {@code Ticket.modulo}. */
++    ModuloErp modulo();
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleVentasEnSitio.java b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleVentasEnSitio.java
+new file mode 100644
+index 0000000..c3179d1
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleVentasEnSitio.java
+@@ -0,0 +1,38 @@
++package co.edu.ufpso.helpdesk.tickets.domain;
++
++import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
++
++/**
++ * Detalle de un incidente de Ventas en Sitio, caja o POS (campos decididos por el equipo en 1.2).
++ *
++ * @param cajaId        obligatorio, máximo 50
++ * @param turnoId       obligatorio, máximo 50
++ * @param dispositivo   obligatorio
++ * @param numeroFactura opcional, máximo 50
++ * @param medioPago     opcional
++ */
++public record DetalleVentasEnSitio(String cajaId, String turnoId, Dispositivo dispositivo,
++        String numeroFactura, MedioPago medioPago) implements DetalleTicket {
++
++    public static final String CAMPO_CLAVE = "cajaId";
++
++    public enum Dispositivo {
++        IMPRESORA,
++        LECTOR_CODIGO,
++        CAJON_MONEDERO,
++        DATAFONO,
++        NINGUNO
++    }
++
++    public enum MedioPago {
++        EFECTIVO,
++        TARJETA,
++        TRANSFERENCIA,
++        MIXTO
++    }
++
++    @Override
++    public ModuloErp modulo() {
++        return ModuloErp.VENTAS_EN_SITIO;
++    }
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleVentasOnline.java b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleVentasOnline.java
+new file mode 100644
+index 0000000..f297c86
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/DetalleVentasOnline.java
+@@ -0,0 +1,23 @@
++package co.edu.ufpso.helpdesk.tickets.domain;
++
++import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
++
++/**
++ * Detalle de un incidente de Ventas Online (campos del enunciado).
++ *
++ * @param pasarelaPagoId obligatorio, máximo 50
++ * @param urlError       obligatorio, máximo 2048
++ * @param navegador      obligatorio, máximo 100
++ * @param logApi         opcional (null = no se guarda), máximo 20000
++ */
++public record DetalleVentasOnline(String pasarelaPagoId, String urlError, String navegador, String logApi)
++        implements DetalleTicket {
++
++    /** Campo que solo existe en este detalle; con él se reconoce al leer. */
++    public static final String CAMPO_CLAVE = "pasarelaPagoId";
++
++    @Override
++    public ModuloErp modulo() {
++        return ModuloErp.VENTAS_ONLINE;
++    }
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/EstadoTicket.java b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/EstadoTicket.java
+new file mode 100644
+index 0000000..7fb55c0
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/EstadoTicket.java
+@@ -0,0 +1,16 @@
++package co.edu.ufpso.helpdesk.tickets.domain;
++
++/**
++ * Estados del ticket. Nace ABIERTO (HU21). En los reportes, "abierto" = ABIERTO o EN_PROCESO y
++ * "cerrado" = RESUELTO o CERRADO (contexto 4.2).
++ */
++public enum EstadoTicket {
++    ABIERTO,
++    EN_PROCESO,
++    RESUELTO,
++    CERRADO;
++
++    public boolean esAbierto() {
++        return this == ABIERTO || this == EN_PROCESO;
++    }
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/Ticket.java b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/Ticket.java
+new file mode 100644
+index 0000000..047c3a2
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/Ticket.java
+@@ -0,0 +1,232 @@
++package co.edu.ufpso.helpdesk.tickets.domain;
++
++import java.time.Instant;
++import java.util.ArrayList;
++import java.util.List;
++
++import org.bson.types.ObjectId;
++import org.springframework.data.annotation.Id;
++import org.springframework.data.mongodb.core.mapping.Document;
++import org.springframework.data.mongodb.core.mapping.Field;
++
++import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
++
++/**
++ * Documento de la colección {@code tickets} (HU21 a HU24). Modelo 1.2, sección 7.
++ *
++ * <p>Reglas de escritura que impone el validador {@code $jsonSchema}:
++ * <ul>
++ *   <li>{@code agenteId}, {@code fechaResolucion} y {@code fechaPrimeraAsignacion} son
++ *       obligatorios aunque valgan null. Spring Data omite los null por defecto, así que llevan
++ *       {@code @Field(write = ALWAYS)}.</li>
++ *   <li>{@code detalle} es lo contrario: un INCIDENTE lo exige y una SUGERENCIA no puede traerlo
++ *       ni siquiera en null. Se deja con la escritura por defecto (un null no se escribe).</li>
++ *   <li>Los opcionales del detalle (por ejemplo {@code logApi}) tampoco se escriben si son null.</li>
++ * </ul>
++ *
++ * <p>No tiene {@code @Version}: el validador no admite campos fuera del modelo.
++ *
++ * <p>Esta clase nunca sale por la API (contexto 8.2). Los controladores reciben y devuelven DTO.
++ */
++@Document("tickets")
++public class Ticket {
++
++    /** Versión actual del esquema de tickets (contexto 7.3). */
++    public static final int SCHEMA_VERSION = 1;
++
++    /** Tope de {@code historialEstados} en el validador. */
++    public static final int MAX_HISTORIAL = 50;
++
++    @Id
++    private ObjectId id;
++
++    private Integer schemaVersion = SCHEMA_VERSION;
++    private Instant fechaCreacion;
++    private Instant fechaActualizacion;
++
++    private ObjectId empresaId;
++    private ObjectId creadorId;
++    private ObjectId solicitanteId;
++
++    /** null = sin asignar. */
++    @Field(write = Field.Write.ALWAYS)
++    private ObjectId agenteId;
++
++    private ModuloErp modulo;
++    private TipoTicket tipo;
++    private String titulo;
++    private String descripcion;
++
++    /** Solo en incidentes. null en sugerencias, y entonces no se escribe. */
++    private DetalleTicket detalle;
++
++    private EstadoTicket estado;
++    private List<CambioEstado> historialEstados = new ArrayList<>();
++
++    @Field(write = Field.Write.ALWAYS)
++    private Instant fechaResolucion;
++
++    private Instant fechaLimiteRespuesta;
++
++    @Field(write = Field.Write.ALWAYS)
++    private Instant fechaPrimeraAsignacion;
++
++    public Ticket() {
++    }
++
++    /**
++     * Comprueba la misma regla que el {@code oneOf} del validador: un INCIDENTE trae el detalle de
++     * su módulo y una SUGERENCIA no trae detalle. El servicio la revisa antes de guardar para
++     * responder 422 en vez de dejar que MongoDB rechace el documento con un 500.
++     */
++    public boolean detalleCoherente() {
++        if (tipo == TipoTicket.SUGERENCIA) {
++            return detalle == null;
++        }
++        return tipo == TipoTicket.INCIDENTE && detalle != null && detalle.modulo() == modulo;
++    }
++
++    public ObjectId getId() {
++        return id;
++    }
++
++    public void setId(ObjectId id) {
++        this.id = id;
++    }
++
++    public Integer getSchemaVersion() {
++        return schemaVersion;
++    }
++
++    public void setSchemaVersion(Integer schemaVersion) {
++        this.schemaVersion = schemaVersion;
++    }
++
++    public Instant getFechaCreacion() {
++        return fechaCreacion;
++    }
++
++    public void setFechaCreacion(Instant fechaCreacion) {
++        this.fechaCreacion = fechaCreacion;
++    }
++
++    public Instant getFechaActualizacion() {
++        return fechaActualizacion;
++    }
++
++    public void setFechaActualizacion(Instant fechaActualizacion) {
++        this.fechaActualizacion = fechaActualizacion;
++    }
++
++    public ObjectId getEmpresaId() {
++        return empresaId;
++    }
++
++    public void setEmpresaId(ObjectId empresaId) {
++        this.empresaId = empresaId;
++    }
++
++    public ObjectId getCreadorId() {
++        return creadorId;
++    }
++
++    public void setCreadorId(ObjectId creadorId) {
++        this.creadorId = creadorId;
++    }
++
++    public ObjectId getSolicitanteId() {
++        return solicitanteId;
++    }
++
++    public void setSolicitanteId(ObjectId solicitanteId) {
++        this.solicitanteId = solicitanteId;
++    }
++
++    public ObjectId getAgenteId() {
++        return agenteId;
++    }
++
++    public void setAgenteId(ObjectId agenteId) {
++        this.agenteId = agenteId;
++    }
++
++    public ModuloErp getModulo() {
++        return modulo;
++    }
++
++    public void setModulo(ModuloErp modulo) {
++        this.modulo = modulo;
++    }
++
++    public TipoTicket getTipo() {
++        return tipo;
++    }
++
++    public void setTipo(TipoTicket tipo) {
++        this.tipo = tipo;
++    }
++
++    public String getTitulo() {
++        return titulo;
++    }
++
++    public void setTitulo(String titulo) {
++        this.titulo = titulo;
++    }
++
++    public String getDescripcion() {
++        return descripcion;
++    }
++
++    public void setDescripcion(String descripcion) {
++        this.descripcion = descripcion;
++    }
++
++    public DetalleTicket getDetalle() {
++        return detalle;
++    }
++
++    public void setDetalle(DetalleTicket detalle) {
++        this.detalle = detalle;
++    }
++
++    public EstadoTicket getEstado() {
++        return estado;
++    }
++
++    public void setEstado(EstadoTicket estado) {
++        this.estado = estado;
++    }
++
++    public List<CambioEstado> getHistorialEstados() {
++        return historialEstados;
++    }
++
++    public void setHistorialEstados(List<CambioEstado> historialEstados) {
++        this.historialEstados = historialEstados;
++    }
++
++    public Instant getFechaResolucion() {
++        return fechaResolucion;
++    }
++
++    public void setFechaResolucion(Instant fechaResolucion) {
++        this.fechaResolucion = fechaResolucion;
++    }
++
++    public Instant getFechaLimiteRespuesta() {
++        return fechaLimiteRespuesta;
++    }
++
++    public void setFechaLimiteRespuesta(Instant fechaLimiteRespuesta) {
++        this.fechaLimiteRespuesta = fechaLimiteRespuesta;
++    }
++
++    public Instant getFechaPrimeraAsignacion() {
++        return fechaPrimeraAsignacion;
++    }
++
++    public void setFechaPrimeraAsignacion(Instant fechaPrimeraAsignacion) {
++        this.fechaPrimeraAsignacion = fechaPrimeraAsignacion;
++    }
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/TipoTicket.java b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/TipoTicket.java
+new file mode 100644
+index 0000000..2dbc4b2
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/TipoTicket.java
+@@ -0,0 +1,7 @@
++package co.edu.ufpso.helpdesk.tickets.domain;
++
++/** Incidente técnico (lleva {@code detalle}) o sugerencia de mejora (no lo lleva). */
++public enum TipoTicket {
++    INCIDENTE,
++    SUGERENCIA
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/repository/DetalleTicketLecturaConverter.java b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/repository/DetalleTicketLecturaConverter.java
+new file mode 100644
+index 0000000..78ded44
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/repository/DetalleTicketLecturaConverter.java
+@@ -0,0 +1,99 @@
++package co.edu.ufpso.helpdesk.tickets.repository;
++
++import java.math.BigDecimal;
++
++import org.bson.Document;
++import org.bson.types.Decimal128;
++import org.springframework.core.convert.converter.Converter;
++import org.springframework.data.convert.ReadingConverter;
++
++import co.edu.ufpso.helpdesk.tickets.domain.DetalleCompras;
++import co.edu.ufpso.helpdesk.tickets.domain.DetalleInventarios;
++import co.edu.ufpso.helpdesk.tickets.domain.DetalleProduccion;
++import co.edu.ufpso.helpdesk.tickets.domain.DetalleTicket;
++import co.edu.ufpso.helpdesk.tickets.domain.DetalleVentasEnSitio;
++import co.edu.ufpso.helpdesk.tickets.domain.DetalleVentasOnline;
++
++/**
++ * Lee {@code tickets.detalle} sin {@code _class} (decisión de 2.3, opción a).
++ *
++ * <p>El tipo se reconoce por el campo que solo existe en un detalle: {@code pasarelaPagoId},
++ * {@code maquinariaId}, {@code codigoBodega}, {@code nitProveedor} o {@code cajaId}. Es una regla
++ * exacta porque el validador exige ese campo en su rama del {@code oneOf} y, con
++ * {@code additionalProperties: false}, lo prohíbe en las otras cuatro. Sirve igual para los
++ * documentos que escribe el backend y para los que se cargaron desde mongosh (la semilla).
++ *
++ * <p>Los números se leen como {@link Number} para no depender de si llegaron como int32,
++ * int64 o double; el validador ya garantiza el tipo exacto al escribir.
++ *
++ * <p>Se registra en {@code MongoConfig.mongoCustomConversions()}.
++ */
++@ReadingConverter
++public class DetalleTicketLecturaConverter implements Converter<Document, DetalleTicket> {
++
++    @Override
++    public DetalleTicket convert(Document d) {
++        if (d.containsKey(DetalleVentasOnline.CAMPO_CLAVE)) {
++            return new DetalleVentasOnline(
++                    d.getString("pasarelaPagoId"),
++                    d.getString("urlError"),
++                    d.getString("navegador"),
++                    d.getString("logApi"));
++        }
++        if (d.containsKey(DetalleProduccion.CAMPO_CLAVE)) {
++            return new DetalleProduccion(
++                    d.getString("maquinariaId"),
++                    d.getString("codigoLote"),
++                    enumDe(DetalleProduccion.FaseProceso.class, d.getString("faseProceso")),
++                    doubleDe(d.get("temperaturaSensor")));
++        }
++        if (d.containsKey(DetalleInventarios.CAMPO_CLAVE)) {
++            return new DetalleInventarios(
++                    d.getString("codigoBodega"),
++                    d.getString("codigoProducto"),
++                    enumDe(DetalleInventarios.TipoOperacion.class, d.getString("tipoOperacion")),
++                    d.getString("codigoBarras"),
++                    enteroDe(d.get("existenciaSistema")));
++        }
++        if (d.containsKey(DetalleCompras.CAMPO_CLAVE)) {
++            return new DetalleCompras(
++                    d.getString("nitProveedor"),
++                    enumDe(DetalleCompras.Etapa.class, d.getString("etapa")),
++                    d.getString("numeroOrdenCompra"),
++                    d.getString("numeroFacturaProveedor"),
++                    decimalDe(d.get("montoInvolucrado")));
++        }
++        if (d.containsKey(DetalleVentasEnSitio.CAMPO_CLAVE)) {
++            return new DetalleVentasEnSitio(
++                    d.getString("cajaId"),
++                    d.getString("turnoId"),
++                    enumDe(DetalleVentasEnSitio.Dispositivo.class, d.getString("dispositivo")),
++                    d.getString("numeroFactura"),
++                    enumDe(DetalleVentasEnSitio.MedioPago.class, d.getString("medioPago")));
++        }
++        // Con el validador activo esto no ocurre. Si ocurre, el documento entró sin validación.
++        throw new IllegalStateException("tickets.detalle sin campo que identifique su módulo. Campos: " + d.keySet());
++    }
++
++    private static <E extends Enum<E>> E enumDe(Class<E> tipo, String valor) {
++        return valor == null ? null : Enum.valueOf(tipo, valor);
++    }
++
++    private static Double doubleDe(Object valor) {
++        return valor instanceof Number n ? n.doubleValue() : null;
++    }
++
++    private static Integer enteroDe(Object valor) {
++        return valor instanceof Number n ? n.intValue() : null;
++    }
++
++    private static BigDecimal decimalDe(Object valor) {
++        if (valor instanceof Decimal128 d) {
++            return d.bigDecimalValue();
++        }
++        if (valor instanceof BigDecimal b) {
++            return b;
++        }
++        return null;
++    }
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/repository/TicketRepository.java b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/repository/TicketRepository.java
+new file mode 100644
+index 0000000..b2eb4ba
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/repository/TicketRepository.java
+@@ -0,0 +1,16 @@
++package co.edu.ufpso.helpdesk.tickets.repository;
++
++import org.bson.types.ObjectId;
++import org.springframework.data.mongodb.repository.MongoRepository;
++
++import co.edu.ufpso.helpdesk.tickets.domain.Ticket;
++
++/**
++ * Acceso a {@code tickets}. Solo lo usa {@code TicketService} (regla entre módulos de 2.2).
++ *
++ * <p>Las consultas de listado (HU22), bandejas y bloqueos de borrado se agregan en 2.6, cada una
++ * apoyada en su índice de {@code database/indices/00_indices.js}. Los índices no se crean desde
++ * aquí ({@code auto-index-creation: false}).
++ */
++public interface TicketRepository extends MongoRepository<Ticket, ObjectId> {
++}
+diff --git a/backend/src/test/java/co/edu/ufpso/helpdesk/tickets/repository/TicketPersistenciaTest.java b/backend/src/test/java/co/edu/ufpso/helpdesk/tickets/repository/TicketPersistenciaTest.java
+new file mode 100644
+index 0000000..c657abd
+--- /dev/null
++++ b/backend/src/test/java/co/edu/ufpso/helpdesk/tickets/repository/TicketPersistenciaTest.java
+@@ -0,0 +1,247 @@
++package co.edu.ufpso.helpdesk.tickets.repository;
++
++import static com.mongodb.client.model.Filters.eq;
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++import static org.junit.jupiter.api.Assumptions.assumeTrue;
++
++import java.math.BigDecimal;
++import java.time.Instant;
++import java.util.Date;
++import java.util.List;
++import java.util.Map;
++import java.util.stream.Collectors;
++
++import org.bson.Document;
++import org.bson.types.Decimal128;
++import org.bson.types.ObjectId;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.data.mongodb.core.MongoTemplate;
++import org.springframework.data.mongodb.core.SimpleMongoClientDatabaseFactory;
++import org.springframework.data.mongodb.core.convert.MappingMongoConverter;
++import org.springframework.test.context.ActiveProfiles;
++
++import com.mongodb.client.MongoClient;
++import com.mongodb.client.MongoCollection;
++import com.mongodb.client.model.CreateCollectionOptions;
++import com.mongodb.client.model.ValidationAction;
++import com.mongodb.client.model.ValidationLevel;
++import com.mongodb.client.model.ValidationOptions;
++
++import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
++import co.edu.ufpso.helpdesk.tickets.domain.CambioEstado;
++import co.edu.ufpso.helpdesk.tickets.domain.DetalleCompras;
++import co.edu.ufpso.helpdesk.tickets.domain.DetalleInventarios;
++import co.edu.ufpso.helpdesk.tickets.domain.DetalleProduccion;
++import co.edu.ufpso.helpdesk.tickets.domain.DetalleTicket;
++import co.edu.ufpso.helpdesk.tickets.domain.DetalleVentasEnSitio;
++import co.edu.ufpso.helpdesk.tickets.domain.DetalleVentasOnline;
++import co.edu.ufpso.helpdesk.tickets.domain.EstadoTicket;
++import co.edu.ufpso.helpdesk.tickets.domain.Ticket;
++import co.edu.ufpso.helpdesk.tickets.domain.TipoTicket;
++
++/**
++ * Guarda y lee tickets contra el validador real de la colección.
++ *
++ * <p>Antes de cada caso copia el validador de {@code helpdesk.tickets} (replica set local) a
++ * {@code helpdesk_test.tickets}, igual que los scripts de {@code database/pruebas/} con
++ * {@code helpdesk_pruebas}. Requisito: haber corrido {@code 00_todos_los_validadores.js} en el
++ * local. No toca los datos de {@code helpdesk}.
++ */
++@SpringBootTest
++@ActiveProfiles("test")
++class TicketPersistenciaTest {
++
++    private static final Instant CREACION = Instant.parse("2026-11-02T15:30:00Z");
++
++    @Autowired
++    private TicketRepository repositorio;
++
++    @Autowired
++    private MongoTemplate template;
++
++    @Autowired
++    private MongoClient mongoClient;
++
++    @Autowired
++    private MappingMongoConverter converter;
++
++    private MongoCollection<Document> coleccion;
++
++    @BeforeEach
++    void copiarValidadorDeHelpdesk() {
++        Document info = mongoClient.getDatabase("helpdesk").listCollections()
++                .filter(eq("name", "tickets")).first();
++        assertThat(info)
++                .as("Falta helpdesk.tickets en el local. Corre database/validadores/00_todos_los_validadores.js")
++                .isNotNull();
++        Document validador = info.get("options", Document.class).get("validator", Document.class);
++
++        template.getDb().getCollection("tickets").drop();
++        template.getDb().createCollection("tickets", new CreateCollectionOptions()
++                .validationOptions(new ValidationOptions()
++                        .validator(validador)
++                        .validationLevel(ValidationLevel.STRICT)
++                        .validationAction(ValidationAction.ERROR)));
++        coleccion = template.getDb().getCollection("tickets");
++    }
++
++    @Test
++    void guardaUnIncidenteDeComprasComoLoExigeElValidador() {
++        DetalleCompras detalle = new DetalleCompras("900123456-1", DetalleCompras.Etapa.CUENTA_POR_PAGAR,
++                "OC-2026-00412", null, new BigDecimal("1250000.50"));
++        Ticket guardado = repositorio.save(incidente(ModuloErp.COMPRAS, detalle));
++
++        Document crudo = coleccion.find(eq("_id", guardado.getId())).first();
++        Document detalleCrudo = crudo.get("detalle", Document.class);
++
++        assertThat(crudo).doesNotContainKey("_class");
++        assertThat(detalleCrudo).doesNotContainKey("_class");
++        assertThat(detalleCrudo.get("montoInvolucrado")).isInstanceOf(Decimal128.class);
++        // Opcional en null: no se escribe.
++        assertThat(detalleCrudo).doesNotContainKey("numeroFacturaProveedor");
++        // Obligatorios que pueden ser null: se escriben en null.
++        assertThat(crudo).containsEntry("agenteId", null)
++                .containsEntry("fechaResolucion", null)
++                .containsEntry("fechaPrimeraAsignacion", null);
++        assertThat(crudo.get("schemaVersion")).isEqualTo(1);
++
++        Ticket leido = repositorio.findById(guardado.getId()).orElseThrow();
++        assertThat(leido.getDetalle()).isEqualTo(detalle);
++        assertThat(leido.detalleCoherente()).isTrue();
++        assertThat(leido.getFechaCreacion()).isEqualTo(CREACION);
++    }
++
++    @Test
++    void guardaUnaSugerenciaSinDetalle() {
++        Ticket sugerencia = base(ModuloErp.INVENTARIOS, TipoTicket.SUGERENCIA);
++        Ticket guardado = repositorio.save(sugerencia);
++
++        Document crudo = coleccion.find(eq("_id", guardado.getId())).first();
++        assertThat(crudo).doesNotContainKey("detalle");
++
++        Ticket leido = repositorio.findById(guardado.getId()).orElseThrow();
++        assertThat(leido.getDetalle()).isNull();
++        assertThat(leido.getHistorialEstados()).containsExactlyElementsOf(sugerencia.getHistorialEstados());
++    }
++
++    @Test
++    void leeLosCincoDetallesInsertadosComoLosInsertaMongosh() {
++        // Mismos tipos que la semilla: int32 en existenciaSistema, double en temperaturaSensor,
++        // Decimal128 en montoInvolucrado y ningún _class.
++        coleccion.insertMany(List.of(
++                crudo("VENTAS_ONLINE", new Document("pasarelaPagoId", "WOMPI-482193")
++                        .append("urlError", "https://tienda.lacteoselzulia.co/checkout/pago?orden=55120")
++                        .append("navegador", "Chrome 141")),
++                crudo("PRODUCCION", new Document("maquinariaId", "MEZ-02")
++                        .append("codigoLote", "L202610-118")
++                        .append("faseProceso", "MEZCLADO")
++                        .append("temperaturaSensor", 78.5)),
++                crudo("INVENTARIOS", new Document("codigoBodega", "BOD-02")
++                        .append("codigoProducto", "SKU-03301")
++                        .append("tipoOperacion", "AJUSTE")
++                        .append("existenciaSistema", -12)),
++                crudo("COMPRAS", new Document("nitProveedor", "860512780-4")
++                        .append("etapa", "RECEPCION")
++                        .append("montoInvolucrado", new Decimal128(new BigDecimal("4300000.00")))),
++                crudo("VENTAS_EN_SITIO", new Document("cajaId", "CAJA-03")
++                        .append("turnoId", "T-20261015-M")
++                        .append("dispositivo", "DATAFONO")
++                        .append("medioPago", "TARJETA"))));
++
++        Map<ModuloErp, DetalleTicket> porModulo = repositorio.findAll().stream()
++                .collect(Collectors.toMap(Ticket::getModulo, Ticket::getDetalle));
++
++        assertThat(porModulo.get(ModuloErp.VENTAS_ONLINE)).isInstanceOfSatisfying(DetalleVentasOnline.class,
++                d -> assertThat(d.logApi()).isNull());
++        assertThat(porModulo.get(ModuloErp.PRODUCCION)).isInstanceOfSatisfying(DetalleProduccion.class,
++                d -> assertThat(d.temperaturaSensor()).isEqualTo(78.5));
++        assertThat(porModulo.get(ModuloErp.INVENTARIOS)).isInstanceOfSatisfying(DetalleInventarios.class,
++                d -> assertThat(d.existenciaSistema()).isEqualTo(-12));
++        assertThat(porModulo.get(ModuloErp.COMPRAS)).isInstanceOfSatisfying(DetalleCompras.class,
++                d -> assertThat(d.montoInvolucrado()).isEqualTo(new BigDecimal("4300000.00")));
++        assertThat(porModulo.get(ModuloErp.VENTAS_EN_SITIO)).isInstanceOfSatisfying(DetalleVentasEnSitio.class,
++                d -> assertThat(d.medioPago()).isEqualTo(DetalleVentasEnSitio.MedioPago.TARJETA));
++    }
++
++    @Test
++    void elValidadorRechazaUnDetalleDeOtroModulo() {
++        Ticket ticket = incidente(ModuloErp.PRODUCCION,
++                new DetalleVentasOnline("PAYU-7781", "https://tienda.cliente.co/checkout", "Chrome 141", null));
++
++        assertThat(ticket.detalleCoherente()).isFalse();
++        // Sin la revisión del servicio, MongoDB lo rechaza (código 121) y el manejador responde
++        // 500 ESQUEMA_RECHAZADO.
++        assertThatThrownBy(() -> repositorio.save(ticket)).isInstanceOf(DataIntegrityViolationException.class);
++    }
++
++    @Test
++    void leeLosTicketsDeLaSemillaSiEstanCargadosEnElLocal() {
++        long total = mongoClient.getDatabase("helpdesk").getCollection("tickets").countDocuments();
++        assumeTrue(total > 0, "La semilla no está cargada en el local (pendiente de 1.5)");
++
++        MongoTemplate helpdesk = new MongoTemplate(
++                new SimpleMongoClientDatabaseFactory(mongoClient, "helpdesk"), converter);
++        List<Ticket> tickets = helpdesk.findAll(Ticket.class);
++
++        assertThat(tickets).hasSize((int) total).allMatch(Ticket::detalleCoherente);
++        Map<ModuloErp, Long> incidentesPorModulo = tickets.stream()
++                .filter(t -> t.getTipo() == TipoTicket.INCIDENTE)
++                .collect(Collectors.groupingBy(Ticket::getModulo, Collectors.counting()));
++        assertThat(incidentesPorModulo).containsOnlyKeys(ModuloErp.values());
++    }
++
++    // ---------- Datos de prueba ----------
++
++    private static Ticket incidente(ModuloErp modulo, DetalleTicket detalle) {
++        Ticket t = base(modulo, TipoTicket.INCIDENTE);
++        t.setDetalle(detalle);
++        return t;
++    }
++
++    private static Ticket base(ModuloErp modulo, TipoTicket tipo) {
++        ObjectId cliente = new ObjectId();
++        Ticket t = new Ticket();
++        t.setFechaCreacion(CREACION);
++        t.setFechaActualizacion(CREACION);
++        t.setEmpresaId(new ObjectId());
++        t.setCreadorId(cliente);
++        t.setSolicitanteId(cliente);
++        t.setModulo(modulo);
++        t.setTipo(tipo);
++        t.setTitulo("Prueba de persistencia");
++        t.setDescripcion("Ticket creado por TicketPersistenciaTest");
++        t.setEstado(EstadoTicket.ABIERTO);
++        t.getHistorialEstados().add(new CambioEstado(EstadoTicket.ABIERTO, CREACION, cliente));
++        t.setFechaLimiteRespuesta(CREACION.plusSeconds(24 * 3600));
++        return t;
++    }
++
++    /** Documento armado a mano, como lo inserta la semilla desde mongosh. */
++    private static Document crudo(String modulo, Document detalle) {
++        ObjectId cliente = new ObjectId();
++        Date creacion = Date.from(CREACION);
++        return new Document("schemaVersion", 1)
++                .append("fechaCreacion", creacion)
++                .append("fechaActualizacion", creacion)
++                .append("empresaId", new ObjectId())
++                .append("creadorId", cliente)
++                .append("solicitanteId", cliente)
++                .append("agenteId", null)
++                .append("modulo", modulo)
++                .append("tipo", "INCIDENTE")
++                .append("titulo", "Incidente de " + modulo)
++                .append("descripcion", "Documento insertado sin pasar por Spring Data")
++                .append("detalle", detalle)
++                .append("estado", "ABIERTO")
++                .append("historialEstados", List.of(new Document("estado", "ABIERTO")
++                        .append("fecha", creacion).append("usuarioId", cliente)))
++                .append("fechaResolucion", null)
++                .append("fechaLimiteRespuesta", Date.from(CREACION.plusSeconds(24 * 3600)))
++                .append("fechaPrimeraAsignacion", null);
++    }
++}

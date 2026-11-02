@@ -14,6 +14,8 @@ import org.springframework.data.mongodb.core.convert.MongoCustomConversions.BigD
 import org.springframework.data.mongodb.core.convert.NoOpDbRefResolver;
 import org.springframework.data.mongodb.core.mapping.MongoMappingContext;
 
+import co.edu.ufpso.helpdesk.tickets.repository.DetalleTicketLecturaConverter;
+
 /**
  * Configuracion de MongoDB.
  *
@@ -42,13 +44,14 @@ public class MongoConfig {
 
     /**
      * Conversiones propias. Reemplaza el bean de Boot (que solo aplica la propiedad de
-     * representacion de BigDecimal). En 2.3 se agrega aqui el convertidor de lectura del
-     * detalle de tickets con {@code configurer.registerConverter(...)}.
+     * representacion de BigDecimal). Aqui se registran los convertidores de lectura de los
+     * embebidos polimorficos: hoy solo tickets.detalle.
      */
     @Bean
     MongoCustomConversions mongoCustomConversions() {
-        return MongoCustomConversions.create(configurer ->
-                configurer.bigDecimal(BigDecimalRepresentation.DECIMAL128));
+        return MongoCustomConversions.create(configurer -> configurer
+                .bigDecimal(BigDecimalRepresentation.DECIMAL128)
+                .registerConverter(new DetalleTicketLecturaConverter()));
     }
 
     /**
