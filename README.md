@@ -13,6 +13,7 @@ database/
   validadores/   un script $jsonSchema por colección y 00_todos_los_validadores.js
   indices/       índices normales, índice vectorial de Atlas y verificación con explain
   pruebas/       inserciones válidas e inválidas para cada validador y para los índices únicos
+  semilla/       datos de prueba y su verificación
 backend/         (Fase 2)
 frontend/        (Fase 3)
 ```
@@ -37,6 +38,32 @@ Se crean después de los validadores, en la misma consola:
 4. Solo en Atlas: `database/indices/01_indice_vectorial_atlas.js` crea `vec_articulos_embedding`. Se revisa con `db.getSiblingDB('helpdesk').articulos.getSearchIndexes()` hasta ver `status: 'READY'`. En local el script no hace nada.
 
 Los nombres de índice empiezan por `ux_` (único), `ix_` (normal), `txt_` (texto) o `ttl_` (expiración), y así aparecen en `explain`.
+
+### Datos de prueba
+
+Se cargan después de los validadores y los índices, en la misma consola:
+
+1. `database/semilla/00_datos_semilla.js` borra los documentos de las 13 colecciones y carga los datos de prueba. Conserva validadores e índices. Debe terminar en `RESULTADO: OK`. En Atlas M0 tarda uno o dos minutos.
+2. `database/semilla/01_verificar_semilla.js` cuenta los documentos, revisa las reglas que aplica el backend y, en Atlas, prueba el índice vectorial. Debe terminar en `RESULTADO: OK`. Si la fila de `$vectorSearch` falla justo después de la carga, espera unos segundos a que Atlas indexe y vuelve a correrlo.
+3. `database/indices/02_verificar_indices.js` otra vez. Con datos toma valores reales para las consultas y muestra cuántos documentos examina cada una con índice y sin él.
+
+| Colección | Documentos |
+|---|---|
+| roles | 5 (los 4 del sistema y `CONSULTA_REPORTES`) |
+| planes | 4 (Básico, Estándar, Premium y Emprendedor, inactivo) |
+| empresas | 40 |
+| usuarios | 414 |
+| membresias | 38 (32 activas, 2 de ellas vencidas; 5 suspendidas; 1 pendiente) |
+| pagos | 444 (34 fallidos) |
+| solicitudesCapacitacion | 14 |
+| capacitaciones | 36 |
+| inscripciones | 876 |
+| tickets | 8.000 (noviembre de 2025 a octubre de 2026) |
+| comentariosTicket | 5.097 |
+| articulos | 40 (20 con vector sintético y 20 con `embedding: null`) |
+| refreshTokens | 25 (5 ya vencidas: el índice TTL las borra en un minuto) |
+
+Todos los usuarios tienen la contraseña `Helpdesk2026*`. El administrador es `liliana.contreras@sistemasintegrados.com.co`. Son datos ficticios: el script siempre genera los mismos, salvo las sesiones, que dependen de la hora de la carga.
 
 Este README se completa en la tarea 4.1 con el despliegue del backend y el frontend.
 
