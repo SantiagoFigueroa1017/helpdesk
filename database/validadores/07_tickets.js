@@ -15,6 +15,10 @@
 // Las ramas se excluyen entre sí porque cada una fija tipo y módulo, así
 // que un documento válido cumple exactamente una.
 //
+// _class: ningún nivel lo admite (decisión de 2.3). El backend desactiva
+// el campo con DefaultMongoTypeMapper(null) y resuelve el tipo del
+// detalle con modulo, no con el nombre de una clase Java.
+//
 // Lo que este validador no revisa (lo hace el backend):
 //   - que solicitanteId pertenezca a empresaId y que el módulo esté contratado
 //   - que fechaLimiteRespuesta = fechaCreacion + horas del plan
@@ -124,8 +128,6 @@
       additionalProperties: false,
       properties: {
         _id: { bsonType: "objectId" },
-        // Spring Data MongoDB escribe _class si no se desactiva. Se decide en 2.3.
-        _class: { bsonType: "string" },
         schemaVersion: { bsonType: "int", minimum: 1 },
         fechaCreacion: { bsonType: "date" },
         fechaActualizacion: { bsonType: "date" },

@@ -27,7 +27,6 @@
       additionalProperties: false,
       properties: {
         _id: { bsonType: "objectId" },
-        _class: { bsonType: "string" },
         schemaVersion: { bsonType: "int", minimum: 1 },
         fechaCreacion: { bsonType: "date" },
         fechaActualizacion: { bsonType: "date" },

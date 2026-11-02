@@ -3,10 +3,11 @@
 //
 // Requisito: haber corrido antes database/validadores/07_tickets.js.
 // El script copia el validador de helpdesk.tickets a una base temporal
-// helpdesk_pruebas, inserta 17 documentos y al final borra esa base.
+// helpdesk_pruebas, inserta 19 documentos y al final borra esa base.
 // No toca los datos de helpdesk.
 //
-// Resultado esperado: 6 inserciones aceptadas, 11 rechazadas, 17/17 OK.
+// Resultado esperado: 6 inserciones aceptadas, 13 rechazadas, 19/19 OK.
+// Los casos 18 y 19 comprueban que _class no se admite (decisión de 2.3).
 // =====================================================================
 
 (function () {
@@ -90,7 +91,11 @@
     ["16 temperaturaSensor como texto", false,
       incidente("PRODUCCION", { maquinariaId: "MEZ-02", codigoLote: "L-1", faseProceso: "EMPAQUE", temperaturaSensor: "78" })],
     ["17 Sin agenteId (debe venir null explícito)", false,
-      (() => { const d = base(); delete d.agenteId; return d; })()]
+      (() => { const d = base(); delete d.agenteId; return d; })()],
+    ["18 _class en la raíz", false,
+      Object.assign(base(), { _class: "co.edu.ufpso.helpdesk.tickets.domain.Ticket" })],
+    ["19 _class dentro del detalle", false,
+      incidente("VENTAS_ONLINE", Object.assign({ _class: "DetalleVentasOnline" }, detalleVentasOnline))]
   ];
 
   let correctos = 0;

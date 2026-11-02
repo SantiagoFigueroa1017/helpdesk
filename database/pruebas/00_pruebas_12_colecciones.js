@@ -7,8 +7,9 @@
 // helpdesk_pruebas, inserta los documentos de prueba y al final borra esa
 // base. No toca los datos de helpdesk.
 //
-// Resultado esperado al final: 23 aceptados, 46 rechazados y
-// 69/69 casos con el resultado esperado.
+// Resultado esperado al final: 23 aceptados, 47 rechazados y
+// 70/70 casos con el resultado esperado.
+// El caso "con _class de Spring Data" comprueba la decisión de 2.3.
 // =====================================================================
 
 (function () {
@@ -188,6 +189,8 @@
     ["empresas", "campo extra en contacto", false,
       (() => { const d = empresa(); d.contacto.cargo = "Jefe de compras"; return d; })()],
     ["empresas", "con plan guardado en la empresa", false, con(empresa, { planId: id() })],
+    ["empresas", "con _class de Spring Data", false,
+      con(empresa, { _class: "co.edu.ufpso.helpdesk.empresas.domain.Empresa" })],
 
     // roles
     ["roles", "rol de sistema", true, rol()],
