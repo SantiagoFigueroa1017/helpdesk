@@ -14,6 +14,7 @@ database/
   indices/       índices normales, índice vectorial de Atlas y verificación con explain
   pruebas/       inserciones válidas e inválidas para cada validador y para los índices únicos
   semilla/       datos de prueba y su verificación
+  reportes/      pipelines de agregación A1 a A9 y guion de la sustentación
 backend/         (Fase 2)
 frontend/        (Fase 3)
 ```
@@ -64,6 +65,26 @@ Se cargan después de los validadores y los índices, en la misma consola:
 | refreshTokens | 25 (5 ya vencidas: el índice TTL las borra en un minuto) |
 
 Todos los usuarios tienen la contraseña `Helpdesk2026*`. El administrador es `liliana.contreras@sistemasintegrados.com.co`. Son datos ficticios: el script siempre genera los mismos, salvo las sesiones, que dependen de la hora de la carga.
+
+### Reportes (agregaciones)
+
+Se corren después de cargar los datos de prueba, en la misma consola. Ninguno modifica datos.
+
+1. `database/reportes/A1_incidentes_por_modulo.js` a `A9_incidentes_antes_despues.js`, uno por uno, o `00_todos_los_reportes.js` para los nueve seguidos. Cada script imprime el reporte, comprueba el resultado contra conteos directos y muestra el `explain("executionStats")` del pipeline. Debe terminar en `RESULTADO: OK`.
+2. `00_todos_los_reportes.js` se genera uniendo los nueve scripts. No se edita a mano.
+3. El orden para presentarlos en la sustentación está en `database/reportes/GUION_SUSTENTACION.md`.
+
+| Reporte | Pregunta | Colección | Etapas |
+|---|---|---|---|
+| A1 | ¿Qué módulo del ERP falla más y cuánto tarda en resolverse? | tickets | $match, $group, $project, $sort |
+| A2 | ¿Cuántas empresas tienen cada plan con la membresía activa? | planes | $lookup, $project, $sort |
+| A3 | ¿Cuántos tickets abiertos tiene cada agente? | usuarios | $match, $lookup, $project, $sort |
+| A4 | ¿Qué plan tiene cada empresa y cuántos tickets ha abierto? | empresas | $lookup, $group, $project, $sort |
+| A5 | ¿Cuánto se recaudó y cuántos pagos fallaron cada mes? | pagos | $match, $group, $sort |
+| A6 | ¿Qué porcentaje asistió a cada capacitación? | capacitaciones | $lookup, $project, $sort |
+| A7 | ¿Cuántos tickets resolvió la base de conocimientos en cada módulo? | articulos | $lookup, $group, $project |
+| A8 | ¿Qué empresas suspendidas dejaron tickets abiertos? | membresias | $match, $lookup, $project |
+| A9 | ¿Bajan los incidentes después de asistir a la capacitación del módulo? | inscripciones | $match, $lookup, $project, $group, $sort |
 
 Este README se completa en la tarea 4.1 con el despliegue del backend y el frontend.
 
