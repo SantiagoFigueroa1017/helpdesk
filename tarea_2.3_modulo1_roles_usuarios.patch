@@ -1,0 +1,928 @@
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/auth/domain/RefreshToken.java b/backend/src/main/java/co/edu/ufpso/helpdesk/auth/domain/RefreshToken.java
+new file mode 100644
+index 0000000..b008a6b
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/auth/domain/RefreshToken.java
+@@ -0,0 +1,50 @@
++package co.edu.ufpso.helpdesk.auth.domain;
++
++import java.time.Instant;
++
++import org.bson.types.ObjectId;
++import org.springframework.data.mongodb.core.mapping.Document;
++
++import co.edu.ufpso.helpdesk.common.dominio.DocumentoBase;
++
++/**
++ * Documento de la colección técnica {@code refreshTokens}. Modelo 1.2, sección 13.
++ *
++ * <p>Una sesión activa. Se guarda el hash del token, nunca el token (contexto 8.3); el formato
++ * del hash y la rotación se fijan en 2.4. El índice TTL {@code ttl_refresh_expiraEn}
++ * borra el documento cuando pasa {@code expiraEn}.
++ */
++@Document("refreshTokens")
++public class RefreshToken extends DocumentoBase {
++
++    private ObjectId usuarioId;
++    private String tokenHash;
++    private Instant expiraEn;
++
++    public RefreshToken() {
++    }
++
++    public ObjectId getUsuarioId() {
++        return usuarioId;
++    }
++
++    public void setUsuarioId(ObjectId usuarioId) {
++        this.usuarioId = usuarioId;
++    }
++
++    public String getTokenHash() {
++        return tokenHash;
++    }
++
++    public void setTokenHash(String tokenHash) {
++        this.tokenHash = tokenHash;
++    }
++
++    public Instant getExpiraEn() {
++        return expiraEn;
++    }
++
++    public void setExpiraEn(Instant expiraEn) {
++        this.expiraEn = expiraEn;
++    }
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/auth/repository/RefreshTokenRepository.java b/backend/src/main/java/co/edu/ufpso/helpdesk/auth/repository/RefreshTokenRepository.java
+new file mode 100644
+index 0000000..8db1589
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/auth/repository/RefreshTokenRepository.java
+@@ -0,0 +1,14 @@
++package co.edu.ufpso.helpdesk.auth.repository;
++
++import org.bson.types.ObjectId;
++import org.springframework.data.mongodb.repository.MongoRepository;
++
++import co.edu.ufpso.helpdesk.auth.domain.RefreshToken;
++
++/**
++ * Acceso a {@code refreshTokens}. Solo lo usa el servicio de autenticación. Las consultas
++ * (por hash para rotar, borrado por usuario para logout y HU08) se agregan en 2.4, apoyadas en
++ * {@code ux_refresh_tokenHash} y en el índice por {@code usuarioId}.
++ */
++public interface RefreshTokenRepository extends MongoRepository<RefreshToken, ObjectId> {
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/common/dominio/AlcanceRol.java b/backend/src/main/java/co/edu/ufpso/helpdesk/common/dominio/AlcanceRol.java
+new file mode 100644
+index 0000000..e101a90
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/common/dominio/AlcanceRol.java
+@@ -0,0 +1,14 @@
++package co.edu.ufpso.helpdesk.common.dominio;
++
++/**
++ * Alcance de un rol (contexto 8.4).
++ *
++ * <p>GLOBAL: personal de Sistemas Integrados, trabaja con datos de todas las empresas.
++ * EMPRESA: usuarios de una empresa cliente; toda consulta se filtra por su {@code empresaId} y
++ * les aplica el bloqueo por falta de pago (7.5). Todos los roles de un usuario tienen el mismo
++ * alcance.
++ */
++public enum AlcanceRol {
++    GLOBAL,
++    EMPRESA
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/common/dominio/DocumentoBase.java b/backend/src/main/java/co/edu/ufpso/helpdesk/common/dominio/DocumentoBase.java
+new file mode 100644
+index 0000000..f3c978c
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/common/dominio/DocumentoBase.java
+@@ -0,0 +1,64 @@
++package co.edu.ufpso.helpdesk.common.dominio;
++
++import java.time.Instant;
++
++import org.bson.types.ObjectId;
++import org.springframework.data.annotation.Id;
++
++/**
++ * Campos que llevan los documentos de las 13 colecciones (modelo 1.2, convenciones):
++ * {@code _id}, {@code schemaVersion}, {@code fechaCreacion} y {@code fechaActualizacion}.
++ *
++ * <p>Spring Data mapea los campos de la superclase como si fueran de cada documento. No se
++ * escribe {@code _class} (decisión de 2.3), así que la herencia no deja rastro en MongoDB.
++ *
++ * <p>Las fechas las pone el servicio al crear y al actualizar. Hoy {@code schemaVersion} vale 1
++ * en todas las colecciones; si una cambia de esquema, su documento sobrescribe el valor inicial.
++ */
++public abstract class DocumentoBase {
++
++    /** Versión de esquema vigente en todas las colecciones (contexto 7.3). */
++    public static final int SCHEMA_VERSION_INICIAL = 1;
++
++    @Id
++    private ObjectId id;
++
++    private Integer schemaVersion = SCHEMA_VERSION_INICIAL;
++    private Instant fechaCreacion;
++    private Instant fechaActualizacion;
++
++    protected DocumentoBase() {
++    }
++
++    public ObjectId getId() {
++        return id;
++    }
++
++    public void setId(ObjectId id) {
++        this.id = id;
++    }
++
++    public Integer getSchemaVersion() {
++        return schemaVersion;
++    }
++
++    public void setSchemaVersion(Integer schemaVersion) {
++        this.schemaVersion = schemaVersion;
++    }
++
++    public Instant getFechaCreacion() {
++        return fechaCreacion;
++    }
++
++    public void setFechaCreacion(Instant fechaCreacion) {
++        this.fechaCreacion = fechaCreacion;
++    }
++
++    public Instant getFechaActualizacion() {
++        return fechaActualizacion;
++    }
++
++    public void setFechaActualizacion(Instant fechaActualizacion) {
++        this.fechaActualizacion = fechaActualizacion;
++    }
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/common/dominio/Permiso.java b/backend/src/main/java/co/edu/ufpso/helpdesk/common/dominio/Permiso.java
+new file mode 100644
+index 0000000..2e042a9
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/common/dominio/Permiso.java
+@@ -0,0 +1,34 @@
++package co.edu.ufpso.helpdesk.common.dominio;
++
++/**
++ * Catálogo fijo de los 49 permisos (modelo 1.2, sección "Catálogo de permisos"; contexto 8.4).
++ *
++ * <p>Cada permiso corresponde a código programado, por eso el catálogo vive en el backend y no se
++ * crean permisos desde la interfaz. El nombre de cada constante es el código que se guarda en
++ * {@code roles.permisos} y el que se usa en {@code @PreAuthorize("hasAuthority('...')")}.
++ *
++ * <p>El validador de {@code roles} ({@code database/validadores/02_roles.js}) tiene la misma
++ * lista. {@code RolPersistenciaTest} comprueba que las dos coinciden: si se agrega un
++ * permiso, hay que cambiar los dos lados.
++ *
++ * <p>Está en {@code common} porque lo usan {@code roles}, {@code usuarios} (anti-escalada) y
++ * {@code security}, y un módulo no puede usar el {@code domain} de otro.
++ */
++public enum Permiso {
++    EMPRESAS_CREAR, EMPRESAS_EDITAR, EMPRESAS_ELIMINAR, EMPRESAS_EDITAR_CONTACTO, EMPRESAS_VER,
++    USUARIOS_CREAR, USUARIOS_EDITAR, USUARIOS_ELIMINAR, USUARIOS_VER,
++    PLANES_CREAR, PLANES_EDITAR, PLANES_ELIMINAR, PLANES_VER,
++    MEMBRESIAS_CREAR, MEMBRESIAS_EDITAR, MEMBRESIAS_ELIMINAR, MEMBRESIAS_VER,
++    PAGOS_REGISTRAR, PAGOS_EDITAR, PAGOS_ELIMINAR, PAGOS_VER,
++    TICKETS_CREAR, TICKETS_VER, TICKETS_VER_PROPIOS, TICKETS_EDITAR, TICKETS_EDITAR_PROPIOS,
++    TICKETS_ASIGNAR, TICKETS_ASIGNAR_OTROS, TICKETS_ELIMINAR,
++    COMENTARIOS_CREAR, COMENTARIOS_ELIMINAR,
++    ROLES_VER, ROLES_GESTIONAR,
++    ARTICULOS_VER, ARTICULOS_VER_INTERNOS, ARTICULOS_CREAR, ARTICULOS_EDITAR, ARTICULOS_ELIMINAR,
++    CAPACITACIONES_VER, CAPACITACIONES_CREAR, CAPACITACIONES_EDITAR, CAPACITACIONES_ELIMINAR,
++    CAPACITACIONES_SOLICITAR,
++    SOLICITUDES_GESTIONAR,
++    INSCRIPCIONES_PROPIAS, INSCRIPCIONES_GESTIONAR, INSCRIPCIONES_VER,
++    ASISTENCIA_MARCAR,
++    REPORTES_VER
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/common/package-info.java b/backend/src/main/java/co/edu/ufpso/helpdesk/common/package-info.java
+index 93b4ac5..298ab83 100644
+--- a/backend/src/main/java/co/edu/ufpso/helpdesk/common/package-info.java
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/common/package-info.java
+@@ -4,7 +4,8 @@
+  * que lanzan los servicios.
+  * <p>{@code common.paginacion}: respuesta {@code Pagina} de todo listado y reglas de
+  * tamaño y orden. La auditoría llegará aquí cuando haga falta.
+- * <p>{@code common.dominio}: tipos que comparten varios módulos, como {@code ModuloErp}. Viven
+- * aquí porque un módulo no puede usar el {@code domain} de otro.
++ * <p>{@code common.dominio}: tipos que comparten varios módulos ({@code ModuloErp},
++ * {@code Permiso}, {@code AlcanceRol}) y {@code DocumentoBase}, con los campos que llevan las 13
++ * colecciones. Viven aquí porque un módulo no puede usar el {@code domain} de otro.
+  */
+ package co.edu.ufpso.helpdesk.common;
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/roles/domain/Rol.java b/backend/src/main/java/co/edu/ufpso/helpdesk/roles/domain/Rol.java
+new file mode 100644
+index 0000000..18255fc
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/roles/domain/Rol.java
+@@ -0,0 +1,82 @@
++package co.edu.ufpso.helpdesk.roles.domain;
++
++import java.util.ArrayList;
++import java.util.List;
++
++import org.springframework.data.mongodb.core.mapping.Document;
++
++import co.edu.ufpso.helpdesk.common.dominio.AlcanceRol;
++import co.edu.ufpso.helpdesk.common.dominio.DocumentoBase;
++import co.edu.ufpso.helpdesk.common.dominio.Permiso;
++
++/**
++ * Documento de la colección {@code roles} (HU25 a HU28). Modelo 1.2, sección 2.
++ *
++ * <p>{@code permisos} va embebido: tiene tope fijo (el catálogo) y se lee con el rol en cada
++ * autorización. El validador exige al menos uno y sin repetidos; la unicidad la revisa también
++ * el servicio para responder 422 y no 500.
++ *
++ * <p>La cantidad de usuarios por rol (HU26) no se guarda: se cuenta en {@code usuarios.rolIds}.
++ * Los roles con {@code esSistema: true} no se eliminan ni cambian nombre o alcance (servicio).
++ */
++@Document("roles")
++public class Rol extends DocumentoBase {
++
++    private String nombre;
++    private String descripcion;
++    private AlcanceRol alcance;
++    private List<Permiso> permisos = new ArrayList<>();
++    private Boolean activo;
++    private Boolean esSistema;
++
++    public Rol() {
++    }
++
++    public String getNombre() {
++        return nombre;
++    }
++
++    public void setNombre(String nombre) {
++        this.nombre = nombre;
++    }
++
++    public String getDescripcion() {
++        return descripcion;
++    }
++
++    public void setDescripcion(String descripcion) {
++        this.descripcion = descripcion;
++    }
++
++    public AlcanceRol getAlcance() {
++        return alcance;
++    }
++
++    public void setAlcance(AlcanceRol alcance) {
++        this.alcance = alcance;
++    }
++
++    public List<Permiso> getPermisos() {
++        return permisos;
++    }
++
++    public void setPermisos(List<Permiso> permisos) {
++        this.permisos = permisos;
++    }
++
++    public Boolean getActivo() {
++        return activo;
++    }
++
++    public void setActivo(Boolean activo) {
++        this.activo = activo;
++    }
++
++    public Boolean getEsSistema() {
++        return esSistema;
++    }
++
++    public void setEsSistema(Boolean esSistema) {
++        this.esSistema = esSistema;
++    }
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/roles/repository/RolRepository.java b/backend/src/main/java/co/edu/ufpso/helpdesk/roles/repository/RolRepository.java
+new file mode 100644
+index 0000000..e027593
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/roles/repository/RolRepository.java
+@@ -0,0 +1,14 @@
++package co.edu.ufpso.helpdesk.roles.repository;
++
++import org.bson.types.ObjectId;
++import org.springframework.data.mongodb.repository.MongoRepository;
++
++import co.edu.ufpso.helpdesk.roles.domain.Rol;
++
++/**
++ * Acceso a {@code roles}. Solo lo usa el servicio de roles (regla entre módulos de 2.2).
++ * Las consultas (por nombre, roles activos de un usuario) se agregan en 2.4, apoyadas en
++ * {@code ux_roles_nombre}.
++ */
++public interface RolRepository extends MongoRepository<Rol, ObjectId> {
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/Ticket.java b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/Ticket.java
+index 047c3a2..da97f8a 100644
+--- a/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/Ticket.java
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/tickets/domain/Ticket.java
+@@ -5,10 +5,10 @@ import java.util.ArrayList;
+ import java.util.List;
+ 
+ import org.bson.types.ObjectId;
+-import org.springframework.data.annotation.Id;
+ import org.springframework.data.mongodb.core.mapping.Document;
+ import org.springframework.data.mongodb.core.mapping.Field;
+ 
++import co.edu.ufpso.helpdesk.common.dominio.DocumentoBase;
+ import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
+ 
+ /**
+@@ -29,21 +29,11 @@ import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
+  * <p>Esta clase nunca sale por la API (contexto 8.2). Los controladores reciben y devuelven DTO.
+  */
+ @Document("tickets")
+-public class Ticket {
+-
+-    /** Versión actual del esquema de tickets (contexto 7.3). */
+-    public static final int SCHEMA_VERSION = 1;
++public class Ticket extends DocumentoBase {
+ 
+     /** Tope de {@code historialEstados} en el validador. */
+     public static final int MAX_HISTORIAL = 50;
+ 
+-    @Id
+-    private ObjectId id;
+-
+-    private Integer schemaVersion = SCHEMA_VERSION;
+-    private Instant fechaCreacion;
+-    private Instant fechaActualizacion;
+-
+     private ObjectId empresaId;
+     private ObjectId creadorId;
+     private ObjectId solicitanteId;
+@@ -86,38 +76,6 @@ public class Ticket {
+         return tipo == TipoTicket.INCIDENTE && detalle != null && detalle.modulo() == modulo;
+     }
+ 
+-    public ObjectId getId() {
+-        return id;
+-    }
+-
+-    public void setId(ObjectId id) {
+-        this.id = id;
+-    }
+-
+-    public Integer getSchemaVersion() {
+-        return schemaVersion;
+-    }
+-
+-    public void setSchemaVersion(Integer schemaVersion) {
+-        this.schemaVersion = schemaVersion;
+-    }
+-
+-    public Instant getFechaCreacion() {
+-        return fechaCreacion;
+-    }
+-
+-    public void setFechaCreacion(Instant fechaCreacion) {
+-        this.fechaCreacion = fechaCreacion;
+-    }
+-
+-    public Instant getFechaActualizacion() {
+-        return fechaActualizacion;
+-    }
+-
+-    public void setFechaActualizacion(Instant fechaActualizacion) {
+-        this.fechaActualizacion = fechaActualizacion;
+-    }
+-
+     public ObjectId getEmpresaId() {
+         return empresaId;
+     }
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/usuarios/domain/Usuario.java b/backend/src/main/java/co/edu/ufpso/helpdesk/usuarios/domain/Usuario.java
+new file mode 100644
+index 0000000..24e6454
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/usuarios/domain/Usuario.java
+@@ -0,0 +1,91 @@
++package co.edu.ufpso.helpdesk.usuarios.domain;
++
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Locale;
++
++import org.bson.types.ObjectId;
++import org.springframework.data.mongodb.core.mapping.Document;
++import org.springframework.data.mongodb.core.mapping.Field;
++
++import co.edu.ufpso.helpdesk.common.dominio.DocumentoBase;
++
++/**
++ * Documento de la colección {@code usuarios} (HU05 a HU08). Modelo 1.2, sección 3.
++ *
++ * <ul>
++ *   <li>{@code email} se guarda en minúsculas: el validador rechaza mayúsculas y el índice único
++ *       distingue entre ellas. El setter lo normaliza.</li>
++ *   <li>{@code passwordHash} es BCrypt de 60 caracteres. Nunca sale en una respuesta (DTO).</li>
++ *   <li>{@code rolIds}: de 1 a 10, sin repetidos, todos del mismo alcance (eso último lo revisa
++ *       el servicio, porque exige consultar {@code roles}).</li>
++ *   <li>{@code empresaId}: null para usuarios de roles GLOBAL. Es obligatorio aunque valga null,
++ *       por eso lleva {@code @Field(write = ALWAYS)}.</li>
++ * </ul>
++ */
++@Document("usuarios")
++public class Usuario extends DocumentoBase {
++
++    private String nombre;
++    private String email;
++    private String passwordHash;
++    private List<ObjectId> rolIds = new ArrayList<>();
++
++    /** null = usuario de Sistemas Integrados (roles GLOBAL). */
++    @Field(write = Field.Write.ALWAYS)
++    private ObjectId empresaId;
++
++    private Boolean activo;
++
++    public Usuario() {
++    }
++
++    public String getNombre() {
++        return nombre;
++    }
++
++    public void setNombre(String nombre) {
++        this.nombre = nombre;
++    }
++
++    public String getEmail() {
++        return email;
++    }
++
++    /** Guarda el email sin espacios a los lados y en minúsculas. */
++    public void setEmail(String email) {
++        this.email = (email == null) ? null : email.strip().toLowerCase(Locale.ROOT);
++    }
++
++    public String getPasswordHash() {
++        return passwordHash;
++    }
++
++    public void setPasswordHash(String passwordHash) {
++        this.passwordHash = passwordHash;
++    }
++
++    public List<ObjectId> getRolIds() {
++        return rolIds;
++    }
++
++    public void setRolIds(List<ObjectId> rolIds) {
++        this.rolIds = rolIds;
++    }
++
++    public ObjectId getEmpresaId() {
++        return empresaId;
++    }
++
++    public void setEmpresaId(ObjectId empresaId) {
++        this.empresaId = empresaId;
++    }
++
++    public Boolean getActivo() {
++        return activo;
++    }
++
++    public void setActivo(Boolean activo) {
++        this.activo = activo;
++    }
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/usuarios/repository/UsuarioRepository.java b/backend/src/main/java/co/edu/ufpso/helpdesk/usuarios/repository/UsuarioRepository.java
+new file mode 100644
+index 0000000..e98b430
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/usuarios/repository/UsuarioRepository.java
+@@ -0,0 +1,15 @@
++package co.edu.ufpso.helpdesk.usuarios.repository;
++
++import org.bson.types.ObjectId;
++import org.springframework.data.mongodb.repository.MongoRepository;
++
++import co.edu.ufpso.helpdesk.usuarios.domain.Usuario;
++
++/**
++ * Acceso a {@code usuarios}. Solo lo usa el servicio de usuarios (regla entre módulos de 2.2).
++ * Las consultas (login por email, listado por empresa, conteo por rol) se agregan en 2.4 y 2.5,
++ * apoyadas en {@code ux_usuarios_email}, {@code ix_usuarios_empresa_nombre} e
++ * {@code ix_usuarios_rolIds}.
++ */
++public interface UsuarioRepository extends MongoRepository<Usuario, ObjectId> {
++}
+diff --git a/backend/src/test/java/co/edu/ufpso/helpdesk/auth/repository/RefreshTokenPersistenciaTest.java b/backend/src/test/java/co/edu/ufpso/helpdesk/auth/repository/RefreshTokenPersistenciaTest.java
+new file mode 100644
+index 0000000..1931099
+--- /dev/null
++++ b/backend/src/test/java/co/edu/ufpso/helpdesk/auth/repository/RefreshTokenPersistenciaTest.java
+@@ -0,0 +1,66 @@
++package co.edu.ufpso.helpdesk.auth.repository;
++
++import static com.mongodb.client.model.Filters.eq;
++import static org.assertj.core.api.Assertions.assertThat;
++
++import java.time.Instant;
++
++import org.bson.Document;
++import org.bson.types.ObjectId;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.data.mongodb.core.MongoTemplate;
++import org.springframework.test.context.ActiveProfiles;
++
++import com.mongodb.client.MongoClient;
++import com.mongodb.client.MongoCollection;
++
++import co.edu.ufpso.helpdesk.auth.domain.RefreshToken;
++import co.edu.ufpso.helpdesk.soporte.ValidadoresDePrueba;
++
++/** Guarda y lee sesiones contra el validador real de {@code refreshTokens}. */
++@SpringBootTest
++@ActiveProfiles("test")
++class RefreshTokenPersistenciaTest {
++
++    private static final Instant AHORA = Instant.parse("2026-11-02T15:30:00Z");
++
++    @Autowired
++    private RefreshTokenRepository repositorio;
++
++    @Autowired
++    private MongoTemplate template;
++
++    @Autowired
++    private MongoClient mongoClient;
++
++    private MongoCollection<Document> coleccion;
++
++    @BeforeEach
++    void copiarValidador() {
++        coleccion = ValidadoresDePrueba.copiar(mongoClient, template, "refreshTokens");
++    }
++
++    @Test
++    void guardaYLeeUnaSesion() {
++        RefreshToken token = new RefreshToken();
++        token.setFechaCreacion(AHORA);
++        token.setFechaActualizacion(AHORA);
++        token.setUsuarioId(new ObjectId());
++        token.setTokenHash("9f2c4e7a1b3d5f60718293a4b5c6d7e8f9012a3b4c5d6e7f8091a2b3c4d5e6f7");
++        token.setExpiraEn(AHORA.plusSeconds(7 * 24 * 3600));
++
++        RefreshToken guardado = repositorio.save(token);
++
++        Document crudo = coleccion.find(eq("_id", guardado.getId())).first();
++        assertThat(crudo).doesNotContainKey("_class");
++        assertThat(crudo.get("expiraEn")).isInstanceOf(java.util.Date.class);
++
++        RefreshToken leido = repositorio.findById(guardado.getId()).orElseThrow();
++        assertThat(leido.getTokenHash()).isEqualTo(token.getTokenHash());
++        assertThat(leido.getExpiraEn()).isEqualTo(token.getExpiraEn());
++        assertThat(leido.getSchemaVersion()).isEqualTo(1);
++    }
++}
+diff --git a/backend/src/test/java/co/edu/ufpso/helpdesk/roles/repository/RolPersistenciaTest.java b/backend/src/test/java/co/edu/ufpso/helpdesk/roles/repository/RolPersistenciaTest.java
+new file mode 100644
+index 0000000..83c7160
+--- /dev/null
++++ b/backend/src/test/java/co/edu/ufpso/helpdesk/roles/repository/RolPersistenciaTest.java
+@@ -0,0 +1,104 @@
++package co.edu.ufpso.helpdesk.roles.repository;
++
++import static com.mongodb.client.model.Filters.eq;
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import java.time.Instant;
++import java.util.Arrays;
++import java.util.List;
++
++import org.bson.Document;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.data.mongodb.core.MongoTemplate;
++import org.springframework.test.context.ActiveProfiles;
++
++import com.mongodb.client.MongoClient;
++import com.mongodb.client.MongoCollection;
++
++import co.edu.ufpso.helpdesk.common.dominio.AlcanceRol;
++import co.edu.ufpso.helpdesk.common.dominio.Permiso;
++import co.edu.ufpso.helpdesk.roles.domain.Rol;
++import co.edu.ufpso.helpdesk.soporte.ValidadoresDePrueba;
++
++/** Guarda y lee roles contra el validador real de {@code roles}. */
++@SpringBootTest
++@ActiveProfiles("test")
++class RolPersistenciaTest {
++
++    private static final Instant AHORA = Instant.parse("2026-11-02T15:30:00Z");
++
++    @Autowired
++    private RolRepository repositorio;
++
++    @Autowired
++    private MongoTemplate template;
++
++    @Autowired
++    private MongoClient mongoClient;
++
++    private MongoCollection<Document> coleccion;
++
++    @BeforeEach
++    void copiarValidador() {
++        coleccion = ValidadoresDePrueba.copiar(mongoClient, template, "roles");
++    }
++
++    @Test
++    void elCatalogoDePermisosCoincideConElDelValidador() {
++        Document esquema = ValidadoresDePrueba.validadorDe(mongoClient, "roles").get("$jsonSchema", Document.class);
++        Document items = esquema.get("properties", Document.class)
++                .get("permisos", Document.class)
++                .get("items", Document.class);
++        List<String> delValidador = items.getList("enum", String.class);
++
++        assertThat(Arrays.stream(Permiso.values()).map(Enum::name))
++                .hasSize(49)
++                .containsExactlyInAnyOrderElementsOf(delValidador);
++    }
++
++    @Test
++    void guardaUnRolConLosCuarentaYNuevePermisos() {
++        Rol rol = rol("ADMIN_PRUEBA", List.of(Permiso.values()));
++        Rol guardado = repositorio.save(rol);
++
++        Document crudo = coleccion.find(eq("_id", guardado.getId())).first();
++        assertThat(crudo).doesNotContainKey("_class");
++        assertThat(crudo.getList("permisos", String.class)).contains("ROLES_GESTIONAR").hasSize(49);
++        assertThat(crudo.get("alcance")).isEqualTo("GLOBAL");
++
++        Rol leido = repositorio.findById(guardado.getId()).orElseThrow();
++        assertThat(leido.getPermisos()).containsExactly(Permiso.values());
++        assertThat(leido.getAlcance()).isEqualTo(AlcanceRol.GLOBAL);
++        assertThat(leido.getEsSistema()).isFalse();
++    }
++
++    @Test
++    void elValidadorRechazaUnRolSinPermisos() {
++        assertThatThrownBy(() -> repositorio.save(rol("SIN_PERMISOS", List.of())))
++                .isInstanceOf(DataIntegrityViolationException.class);
++    }
++
++    @Test
++    void elValidadorRechazaPermisosRepetidos() {
++        Rol rol = rol("REPETIDOS", List.of(Permiso.TICKETS_VER, Permiso.TICKETS_VER));
++        assertThatThrownBy(() -> repositorio.save(rol)).isInstanceOf(DataIntegrityViolationException.class);
++    }
++
++    private static Rol rol(String nombre, List<Permiso> permisos) {
++        Rol rol = new Rol();
++        rol.setFechaCreacion(AHORA);
++        rol.setFechaActualizacion(AHORA);
++        rol.setNombre(nombre);
++        rol.setDescripcion("Rol creado por RolPersistenciaTest");
++        rol.setAlcance(AlcanceRol.GLOBAL);
++        rol.setPermisos(permisos);
++        rol.setActivo(true);
++        rol.setEsSistema(false);
++        return rol;
++    }
++}
+diff --git a/backend/src/test/java/co/edu/ufpso/helpdesk/soporte/ValidadoresDePrueba.java b/backend/src/test/java/co/edu/ufpso/helpdesk/soporte/ValidadoresDePrueba.java
+new file mode 100644
+index 0000000..2ddf35f
+--- /dev/null
++++ b/backend/src/test/java/co/edu/ufpso/helpdesk/soporte/ValidadoresDePrueba.java
+@@ -0,0 +1,53 @@
++package co.edu.ufpso.helpdesk.soporte;
++
++import static com.mongodb.client.model.Filters.eq;
++import static org.assertj.core.api.Assertions.assertThat;
++
++import org.bson.Document;
++import org.springframework.data.mongodb.core.MongoTemplate;
++
++import com.mongodb.client.MongoClient;
++import com.mongodb.client.MongoCollection;
++import com.mongodb.client.model.CreateCollectionOptions;
++import com.mongodb.client.model.ValidationAction;
++import com.mongodb.client.model.ValidationLevel;
++import com.mongodb.client.model.ValidationOptions;
++
++/**
++ * Copia el validador {@code $jsonSchema} de una colección de {@code helpdesk} (replica set local) a
++ * la base de pruebas, igual que los scripts de {@code database/pruebas/} con
++ * {@code helpdesk_pruebas}. Así las pruebas de persistencia escriben contra el validador real.
++ *
++ * <p>Requisito: haber corrido {@code database/validadores/00_todos_los_validadores.js} en el local.
++ */
++public final class ValidadoresDePrueba {
++
++    private ValidadoresDePrueba() {
++    }
++
++    /**
++     * Borra la colección en la base de pruebas y la crea vacía con el validador de {@code helpdesk}.
++     *
++     * @return la colección recién creada, para leer los documentos crudos
++     */
++    public static MongoCollection<Document> copiar(MongoClient cliente, MongoTemplate pruebas, String coleccion) {
++        Document validador = validadorDe(cliente, coleccion);
++        pruebas.getDb().getCollection(coleccion).drop();
++        pruebas.getDb().createCollection(coleccion, new CreateCollectionOptions()
++                .validationOptions(new ValidationOptions()
++                        .validator(validador)
++                        .validationLevel(ValidationLevel.STRICT)
++                        .validationAction(ValidationAction.ERROR)));
++        return pruebas.getDb().getCollection(coleccion);
++    }
++
++    /** El documento {@code validator} de una colección de {@code helpdesk}. */
++    public static Document validadorDe(MongoClient cliente, String coleccion) {
++        Document info = cliente.getDatabase("helpdesk").listCollections()
++                .filter(eq("name", coleccion)).first();
++        assertThat(info)
++                .as("Falta helpdesk.%s en el local. Corre database/validadores/00_todos_los_validadores.js", coleccion)
++                .isNotNull();
++        return info.get("options", Document.class).get("validator", Document.class);
++    }
++}
+diff --git a/backend/src/test/java/co/edu/ufpso/helpdesk/tickets/repository/TicketPersistenciaTest.java b/backend/src/test/java/co/edu/ufpso/helpdesk/tickets/repository/TicketPersistenciaTest.java
+index c657abd..ec78bc4 100644
+--- a/backend/src/test/java/co/edu/ufpso/helpdesk/tickets/repository/TicketPersistenciaTest.java
++++ b/backend/src/test/java/co/edu/ufpso/helpdesk/tickets/repository/TicketPersistenciaTest.java
+@@ -27,12 +27,9 @@ import org.springframework.test.context.ActiveProfiles;
+ 
+ import com.mongodb.client.MongoClient;
+ import com.mongodb.client.MongoCollection;
+-import com.mongodb.client.model.CreateCollectionOptions;
+-import com.mongodb.client.model.ValidationAction;
+-import com.mongodb.client.model.ValidationLevel;
+-import com.mongodb.client.model.ValidationOptions;
+ 
+ import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
++import co.edu.ufpso.helpdesk.soporte.ValidadoresDePrueba;
+ import co.edu.ufpso.helpdesk.tickets.domain.CambioEstado;
+ import co.edu.ufpso.helpdesk.tickets.domain.DetalleCompras;
+ import co.edu.ufpso.helpdesk.tickets.domain.DetalleInventarios;
+@@ -48,9 +45,8 @@ import co.edu.ufpso.helpdesk.tickets.domain.TipoTicket;
+  * Guarda y lee tickets contra el validador real de la colección.
+  *
+  * <p>Antes de cada caso copia el validador de {@code helpdesk.tickets} (replica set local) a
+- * {@code helpdesk_test.tickets}, igual que los scripts de {@code database/pruebas/} con
+- * {@code helpdesk_pruebas}. Requisito: haber corrido {@code 00_todos_los_validadores.js} en el
+- * local. No toca los datos de {@code helpdesk}.
++ * {@code helpdesk_test.tickets} con {@link ValidadoresDePrueba}. No toca los datos de
++ * {@code helpdesk}.
+  */
+ @SpringBootTest
+ @ActiveProfiles("test")
+@@ -74,20 +70,7 @@ class TicketPersistenciaTest {
+ 
+     @BeforeEach
+     void copiarValidadorDeHelpdesk() {
+-        Document info = mongoClient.getDatabase("helpdesk").listCollections()
+-                .filter(eq("name", "tickets")).first();
+-        assertThat(info)
+-                .as("Falta helpdesk.tickets en el local. Corre database/validadores/00_todos_los_validadores.js")
+-                .isNotNull();
+-        Document validador = info.get("options", Document.class).get("validator", Document.class);
+-
+-        template.getDb().getCollection("tickets").drop();
+-        template.getDb().createCollection("tickets", new CreateCollectionOptions()
+-                .validationOptions(new ValidationOptions()
+-                        .validator(validador)
+-                        .validationLevel(ValidationLevel.STRICT)
+-                        .validationAction(ValidationAction.ERROR)));
+-        coleccion = template.getDb().getCollection("tickets");
++        coleccion = ValidadoresDePrueba.copiar(mongoClient, template, "tickets");
+     }
+ 
+     @Test
+diff --git a/backend/src/test/java/co/edu/ufpso/helpdesk/usuarios/repository/UsuarioPersistenciaTest.java b/backend/src/test/java/co/edu/ufpso/helpdesk/usuarios/repository/UsuarioPersistenciaTest.java
+new file mode 100644
+index 0000000..730c1e8
+--- /dev/null
++++ b/backend/src/test/java/co/edu/ufpso/helpdesk/usuarios/repository/UsuarioPersistenciaTest.java
+@@ -0,0 +1,104 @@
++package co.edu.ufpso.helpdesk.usuarios.repository;
++
++import static com.mongodb.client.model.Filters.eq;
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import java.time.Instant;
++import java.util.List;
++
++import org.bson.Document;
++import org.bson.types.ObjectId;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.data.mongodb.core.MongoTemplate;
++import org.springframework.test.context.ActiveProfiles;
++
++import com.mongodb.client.MongoClient;
++import com.mongodb.client.MongoCollection;
++
++import co.edu.ufpso.helpdesk.soporte.ValidadoresDePrueba;
++import co.edu.ufpso.helpdesk.usuarios.domain.Usuario;
++
++/** Guarda y lee usuarios contra el validador real de {@code usuarios}. */
++@SpringBootTest
++@ActiveProfiles("test")
++class UsuarioPersistenciaTest {
++
++    private static final Instant AHORA = Instant.parse("2026-11-02T15:30:00Z");
++
++    /** Hash BCrypt de ejemplo con el formato que exige el validador (60 caracteres). */
++    private static final String HASH = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy";
++
++    @Autowired
++    private UsuarioRepository repositorio;
++
++    @Autowired
++    private MongoTemplate template;
++
++    @Autowired
++    private MongoClient mongoClient;
++
++    private MongoCollection<Document> coleccion;
++
++    @BeforeEach
++    void copiarValidador() {
++        coleccion = ValidadoresDePrueba.copiar(mongoClient, template, "usuarios");
++    }
++
++    @Test
++    void guardaUnUsuarioGlobalConEmpresaIdNullExplicito() {
++        Usuario agente = usuario("Laura Sanjuán", "laura.sanjuan@sistemasintegrados.com.co", null);
++        Usuario guardado = repositorio.save(agente);
++
++        Document crudo = coleccion.find(eq("_id", guardado.getId())).first();
++        assertThat(crudo).doesNotContainKey("_class").containsEntry("empresaId", null);
++
++        Usuario leido = repositorio.findById(guardado.getId()).orElseThrow();
++        assertThat(leido.getEmpresaId()).isNull();
++        assertThat(leido.getRolIds()).isEqualTo(agente.getRolIds());
++    }
++
++    @Test
++    void guardaUnUsuarioDeEmpresaConElEmailEnMinusculas() {
++        ObjectId empresa = new ObjectId();
++        Usuario cliente = usuario("Camilo Quintero", "  Camilo.Quintero@LacteosElZulia.co ", empresa);
++        Usuario guardado = repositorio.save(cliente);
++
++        Document crudo = coleccion.find(eq("_id", guardado.getId())).first();
++        assertThat(crudo.getString("email")).isEqualTo("camilo.quintero@lacteoselzulia.co");
++        assertThat(crudo.getObjectId("empresaId")).isEqualTo(empresa);
++    }
++
++    @Test
++    void elValidadorRechazaUnaContrasenaSinBcrypt() {
++        Usuario usuario = usuario("Diego Pacheco", "diego.pacheco@lacteoselzulia.co", new ObjectId());
++        usuario.setPasswordHash("Helpdesk2026*");
++
++        assertThatThrownBy(() -> repositorio.save(usuario)).isInstanceOf(DataIntegrityViolationException.class);
++    }
++
++    @Test
++    void elValidadorRechazaUnUsuarioSinRoles() {
++        Usuario usuario = usuario("Yeimy Carrascal", "yeimy.carrascal@lacteoselzulia.co", new ObjectId());
++        usuario.setRolIds(List.of());
++
++        assertThatThrownBy(() -> repositorio.save(usuario)).isInstanceOf(DataIntegrityViolationException.class);
++    }
++
++    private static Usuario usuario(String nombre, String email, ObjectId empresaId) {
++        Usuario u = new Usuario();
++        u.setFechaCreacion(AHORA);
++        u.setFechaActualizacion(AHORA);
++        u.setNombre(nombre);
++        u.setEmail(email);
++        u.setPasswordHash(HASH);
++        u.setRolIds(List.of(new ObjectId(), new ObjectId()));
++        u.setEmpresaId(empresaId);
++        u.setActivo(true);
++        return u;
++    }
++}

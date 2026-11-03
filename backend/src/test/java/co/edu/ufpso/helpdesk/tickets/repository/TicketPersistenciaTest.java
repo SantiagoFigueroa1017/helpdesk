@@ -27,12 +27,9 @@ import org.springframework.test.context.ActiveProfiles;
 
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
-import com.mongodb.client.model.CreateCollectionOptions;
-import com.mongodb.client.model.ValidationAction;
-import com.mongodb.client.model.ValidationLevel;
-import com.mongodb.client.model.ValidationOptions;
 
 import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
+import co.edu.ufpso.helpdesk.soporte.ValidadoresDePrueba;
 import co.edu.ufpso.helpdesk.tickets.domain.CambioEstado;
 import co.edu.ufpso.helpdesk.tickets.domain.DetalleCompras;
 import co.edu.ufpso.helpdesk.tickets.domain.DetalleInventarios;
@@ -48,9 +45,8 @@ import co.edu.ufpso.helpdesk.tickets.domain.TipoTicket;
  * Guarda y lee tickets contra el validador real de la colección.
  *
  * <p>Antes de cada caso copia el validador de {@code helpdesk.tickets} (replica set local) a
- * {@code helpdesk_test.tickets}, igual que los scripts de {@code database/pruebas/} con
- * {@code helpdesk_pruebas}. Requisito: haber corrido {@code 00_todos_los_validadores.js} en el
- * local. No toca los datos de {@code helpdesk}.
+ * {@code helpdesk_test.tickets} con {@link ValidadoresDePrueba}. No toca los datos de
+ * {@code helpdesk}.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -74,20 +70,7 @@ class TicketPersistenciaTest {
 
     @BeforeEach
     void copiarValidadorDeHelpdesk() {
-        Document info = mongoClient.getDatabase("helpdesk").listCollections()
-                .filter(eq("name", "tickets")).first();
-        assertThat(info)
-                .as("Falta helpdesk.tickets en el local. Corre database/validadores/00_todos_los_validadores.js")
-                .isNotNull();
-        Document validador = info.get("options", Document.class).get("validator", Document.class);
-
-        template.getDb().getCollection("tickets").drop();
-        template.getDb().createCollection("tickets", new CreateCollectionOptions()
-                .validationOptions(new ValidationOptions()
-                        .validator(validador)
-                        .validationLevel(ValidationLevel.STRICT)
-                        .validationAction(ValidationAction.ERROR)));
-        coleccion = template.getDb().getCollection("tickets");
+        coleccion = ValidadoresDePrueba.copiar(mongoClient, template, "tickets");
     }
 
     @Test

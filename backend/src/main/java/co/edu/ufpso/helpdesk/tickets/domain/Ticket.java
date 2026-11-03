@@ -5,10 +5,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.bson.types.ObjectId;
-import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import org.springframework.data.mongodb.core.mapping.Field;
 
+import co.edu.ufpso.helpdesk.common.dominio.DocumentoBase;
 import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
 
 /**
@@ -29,20 +29,10 @@ import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
  * <p>Esta clase nunca sale por la API (contexto 8.2). Los controladores reciben y devuelven DTO.
  */
 @Document("tickets")
-public class Ticket {
-
-    /** Versión actual del esquema de tickets (contexto 7.3). */
-    public static final int SCHEMA_VERSION = 1;
+public class Ticket extends DocumentoBase {
 
     /** Tope de {@code historialEstados} en el validador. */
     public static final int MAX_HISTORIAL = 50;
-
-    @Id
-    private ObjectId id;
-
-    private Integer schemaVersion = SCHEMA_VERSION;
-    private Instant fechaCreacion;
-    private Instant fechaActualizacion;
 
     private ObjectId empresaId;
     private ObjectId creadorId;
@@ -84,38 +74,6 @@ public class Ticket {
             return detalle == null;
         }
         return tipo == TipoTicket.INCIDENTE && detalle != null && detalle.modulo() == modulo;
-    }
-
-    public ObjectId getId() {
-        return id;
-    }
-
-    public void setId(ObjectId id) {
-        this.id = id;
-    }
-
-    public Integer getSchemaVersion() {
-        return schemaVersion;
-    }
-
-    public void setSchemaVersion(Integer schemaVersion) {
-        this.schemaVersion = schemaVersion;
-    }
-
-    public Instant getFechaCreacion() {
-        return fechaCreacion;
-    }
-
-    public void setFechaCreacion(Instant fechaCreacion) {
-        this.fechaCreacion = fechaCreacion;
-    }
-
-    public Instant getFechaActualizacion() {
-        return fechaActualizacion;
-    }
-
-    public void setFechaActualizacion(Instant fechaActualizacion) {
-        this.fechaActualizacion = fechaActualizacion;
     }
 
     public ObjectId getEmpresaId() {
