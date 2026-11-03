@@ -1,0 +1,164 @@
+/*
+ * Sistema de diseño del Helpdesk (tarea 3.1) · Paleta A "Índigo sereno".
+ *
+ * Cómo funciona con Tailwind v4:
+ *  1. Los colores reales viven en variables --hd-* de :root (tema claro) y [data-tema="oscuro"].
+ *  2. @theme inline los publica como colores de Tailwind: bg-primario, text-texto-suave, border-borde...
+ *  3. Cambiar de tema solo cambia las variables; ningún componente necesita clases "dark:".
+ *
+ * Todas las parejas de texto y fondo cumplen WCAG AA (4,5:1 o más). Los contrastes calculados están
+ * en el acta 3.1. Si cambias un color, vuelve a medir el contraste.
+ */
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+
+/* La variante dark: de Tailwind sigue al atributo data-tema, no a la preferencia del sistema. */
+@custom-variant dark (&:where([data-tema='oscuro'], [data-tema='oscuro'] *));
+
+:root {
+  color-scheme: light;
+
+  /* Marca */
+  --hd-primario: #4338ca;          /* botones, enlaces fuertes, foco. Blanco encima: 7,9:1 */
+  --hd-primario-hover: #3730a3;
+  --hd-primario-suave: #eef0ff;    /* fondos de chips y filas seleccionadas. Primario encima: 7,0:1 */
+  --hd-sobre-primario: #ffffff;
+  --hd-acento: #0b7a6e;            /* enlaces secundarios y detalles. Sobre blanco: 5,2:1 */
+
+  /* Superficies y texto */
+  --hd-fondo: #f7f8fc;
+  --hd-superficie: #ffffff;
+  --hd-superficie-2: #f1f3f9;      /* hover de filas, encabezados de tabla */
+  --hd-texto: #1e2235;             /* sobre el fondo: 14,8:1 */
+  --hd-texto-suave: #5b6178;       /* sobre el fondo: 5,8:1 */
+  --hd-borde: #e3e6f0;
+  --hd-foco: #6366f1;
+
+  /* Menú lateral (oscuro en los dos temas) */
+  --hd-lateral: #1e2235;
+  --hd-lateral-texto: #c9cde0;     /* 10,0:1 */
+  --hd-lateral-activo: rgb(255 255 255 / 0.12);
+
+  /* Estados: fondo suave + texto oscuro del mismo tono (todos por encima de 6:1) */
+  --hd-exito-fondo: #dcfce7;  --hd-exito-texto: #166534;
+  --hd-aviso-fondo: #fef3c7;  --hd-aviso-texto: #92400e;
+  --hd-peligro-fondo: #fee2e2; --hd-peligro-texto: #991b1b;
+  --hd-info-fondo: #dbeafe;   --hd-info-texto: #1e40af;
+  --hd-peligro: #b91c1c;      /* botón de eliminar. Blanco encima: 6,5:1 */
+  --hd-peligro-hover: #991b1b;
+
+  /* Un color por módulo del ERP, para gráficas (3.6) y chips */
+  /* Validada con el validador de paleta (3.6): banda de luminosidad, croma y separación para daltonismo. */
+  --hd-mod-ventas-online: #4338ca;
+  --hd-mod-inventarios: #00897b;
+  --hd-mod-compras: #b45309;
+  --hd-mod-produccion: #7c3aed;
+  --hd-mod-ventas-sitio: #be185d;
+}
+
+[data-tema='oscuro'] {
+  color-scheme: dark;
+
+  --hd-primario: #4f46e5;          /* blanco encima: 6,3:1 */
+  --hd-primario-hover: #4338ca;
+  --hd-primario-suave: #262a47;    /* texto #a5b0ff encima: 6,8:1 */
+  --hd-sobre-primario: #ffffff;
+  --hd-acento: #4fd1c0;            /* sobre la superficie: 8,8:1 */
+
+  --hd-fondo: #12141f;
+  --hd-superficie: #1b1e2c;
+  --hd-superficie-2: #232738;
+  --hd-texto: #e7e9f3;             /* 15,1:1 */
+  --hd-texto-suave: #a3a8c3;       /* 7,1:1 */
+  --hd-borde: #2c3045;
+  --hd-foco: #a5b0ff;
+
+  --hd-lateral: #0d0f18;
+  --hd-lateral-texto: #c9cde0;
+  --hd-lateral-activo: rgb(255 255 255 / 0.1);
+
+  --hd-exito-fondo: #14532d;  --hd-exito-texto: #86efac;
+  --hd-aviso-fondo: #4a2f0a;  --hd-aviso-texto: #fcd34d;
+  --hd-peligro-fondo: #4c1515; --hd-peligro-texto: #fca5a5;
+  --hd-info-fondo: #172554;   --hd-info-texto: #93c5fd;
+  --hd-peligro: #b91c1c;
+  --hd-peligro-hover: #dc2626;
+
+  --hd-mod-ventas-online: #6b78f5;
+  --hd-mod-inventarios: #13a593;
+  --hd-mod-compras: #bf8000;
+  --hd-mod-produccion: #a968f0;
+  --hd-mod-ventas-sitio: #e5507e;
+}
+
+/* "Primario suave" lleva texto primario en claro y #a5b0ff en oscuro: */
+:root { --hd-sobre-primario-suave: var(--hd-primario); }
+[data-tema='oscuro'] { --hd-sobre-primario-suave: #a5b0ff; }
+
+@theme inline {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
+
+  --color-primario: var(--hd-primario);
+  --color-primario-hover: var(--hd-primario-hover);
+  --color-primario-suave: var(--hd-primario-suave);
+  --color-sobre-primario: var(--hd-sobre-primario);
+  --color-sobre-primario-suave: var(--hd-sobre-primario-suave);
+  --color-acento: var(--hd-acento);
+
+  --color-fondo: var(--hd-fondo);
+  --color-superficie: var(--hd-superficie);
+  --color-superficie-2: var(--hd-superficie-2);
+  --color-texto: var(--hd-texto);
+  --color-texto-suave: var(--hd-texto-suave);
+  --color-borde: var(--hd-borde);
+  --color-foco: var(--hd-foco);
+
+  --color-lateral: var(--hd-lateral);
+  --color-lateral-texto: var(--hd-lateral-texto);
+  --color-lateral-activo: var(--hd-lateral-activo);
+
+  --color-exito-fondo: var(--hd-exito-fondo);
+  --color-exito-texto: var(--hd-exito-texto);
+  --color-aviso-fondo: var(--hd-aviso-fondo);
+  --color-aviso-texto: var(--hd-aviso-texto);
+  --color-peligro-fondo: var(--hd-peligro-fondo);
+  --color-peligro-texto: var(--hd-peligro-texto);
+  --color-info-fondo: var(--hd-info-fondo);
+  --color-info-texto: var(--hd-info-texto);
+  --color-peligro: var(--hd-peligro);
+  --color-peligro-hover: var(--hd-peligro-hover);
+
+  --color-mod-ventas-online: var(--hd-mod-ventas-online);
+  --color-mod-inventarios: var(--hd-mod-inventarios);
+  --color-mod-compras: var(--hd-mod-compras);
+  --color-mod-produccion: var(--hd-mod-produccion);
+  --color-mod-ventas-sitio: var(--hd-mod-ventas-sitio);
+
+  --radius-control: 0.5rem;   /* botones, campos */
+  --radius-tarjeta: 0.875rem; /* tarjetas y diálogos */
+  --shadow-tarjeta: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 3px rgb(16 24 40 / 0.04);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-fondo font-sans text-texto antialiased;
+    font-feature-settings: 'cv11', 'ss01'; /* cifras y letras más legibles en Inter */
+  }
+  /* Foco visible y consistente para teclado en todo el sistema */
+  :focus-visible {
+    outline: 2px solid var(--hd-foco);
+    outline-offset: 2px;
+  }
+  /* Respeta a quien pidió menos movimiento */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

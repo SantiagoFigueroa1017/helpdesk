@@ -1,0 +1,13 @@
+// Componentes base del sistema de diseño (tarea 3.1). Importar desde '@/components/ui'.
+export { Aviso } from './Aviso'
+export { Boton, type BotonProps } from './Boton'
+export { AreaTexto, CampoTexto, Casilla, Selector, type Opcion } from './Campo'
+export { Cargando, Vacio } from './Cargando'
+export { Dialogo } from './Dialogo'
+export { Insignia } from './Insignia'
+export { Tabla, Td, Th, Tr } from './Tabla'
+export { Estadistica, Tarjeta } from './Tarjeta'
+export { Confirmar } from './Confirmar'
+export { DialogoFormulario } from './DialogoFormulario'
+export { Encabezado, Filtros } from './Encabezado'
+export { Paginador } from './Paginador'
