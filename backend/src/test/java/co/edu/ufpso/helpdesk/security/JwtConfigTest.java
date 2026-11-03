@@ -79,13 +79,17 @@ class JwtConfigTest {
 
     @Test
     void elToStringDeLasPropiedadesNoMuestraElSecreto() {
-        PropiedadesJwt propiedades = new PropiedadesJwt(SECRETO, null, null);
+        PropiedadesJwt propiedades = new PropiedadesJwt(SECRETO, null, null, true);
         assertThat(propiedades.toString()).doesNotContain(SECRETO).contains("***");
     }
 
     static String firmar(JwtEncoder encoder, Instant emitido, Instant expira) {
+        return firmar(encoder, emitido, expira, "6750a1b2c3d4e5f601234567");
+    }
+
+    static String firmar(JwtEncoder encoder, Instant emitido, Instant expira, String sujeto) {
         JwtClaimsSet claims = JwtClaimsSet.builder()
-                .subject("6750a1b2c3d4e5f601234567")
+                .subject(sujeto)
                 .issuedAt(emitido)
                 .expiresAt(expira)
                 .build();

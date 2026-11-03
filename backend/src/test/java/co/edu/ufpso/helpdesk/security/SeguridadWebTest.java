@@ -1,7 +1,5 @@
 package co.edu.ufpso.helpdesk.security;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -10,9 +8,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+import org.bson.types.ObjectId;
+import org.junit.jupiter.api.BeforeEach;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,19 +29,24 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import co.edu.ufpso.helpdesk.common.dominio.AlcanceRol;
+import co.edu.ufpso.helpdesk.common.dominio.Permiso;
+
 /**
  * La cadena de filtros completa de {@code config.SeguridadConfig}: sin sesión, token Bearer,
  * rutas públicas y 401 y 403 en el mismo ProblemDetail que el resto de la API.
  *
- * <p>Levanta el contexto de Spring como las pruebas de persistencia, pero no escribe en MongoDB.
+ * <p>Levanta el contexto de Spring como las pruebas de persistencia, pero no lee ni escribe en
+ * MongoDB: {@link PermisosEfectivos} es un doble de prueba. El usuario del token tiene solo
+ * {@code TICKETS_VER}. El ciclo real con MongoDB está en {@code auth.controller.AuthIntegracionTest}.
  * El controlador de prueba solo existe en esta clase ({@code @Import}); Boot no lo registra en
  * otras pruebas porque está anidado en una clase de pruebas.
  */
@@ -53,13 +64,32 @@ class SeguridadWebTest {
     @Autowired
     private JwtEncoder encoder;
 
+    @MockitoBean
+    private PermisosEfectivos permisosEfectivos;
+
+    private static final ObjectId USUARIO = new ObjectId("6750a1b2c3d4e5f601234567");
+
+    @BeforeEach
+    void usuarioConUnPermiso() {
+        when(permisosEfectivos.resolver(any(ObjectId.class))).thenReturn(Optional.empty());
+        when(permisosEfectivos.resolver(USUARIO)).thenReturn(Optional.of(new UsuarioAutenticado(
+                USUARIO, "Andrés Ropero", "andres.ropero@sistemasintegrados.com.co", null,
+                AlcanceRol.GLOBAL, Set.of(Permiso.TICKETS_VER))));
+    }
+
     @RestController
     @RequestMapping("/api/prueba-seguridad")
     static class ControladorDePrueba {
 
         @GetMapping("/autenticado")
-        Map<String, String> autenticado(@AuthenticationPrincipal Jwt jwt) {
-            return Map.of("usuarioId", jwt.getSubject());
+        Map<String, String> autenticado(@AuthenticationPrincipal UsuarioAutenticado usuario) {
+            return Map.of("usuarioId", usuario.id().toHexString());
+        }
+
+        @GetMapping("/con-permiso-que-tiene")
+        @PreAuthorize("hasAuthority('TICKETS_VER')")
+        Map<String, String> conPermisoQueTiene() {
+            return Map.of("ok", "si");
         }
 
         @GetMapping("/con-permiso")
@@ -133,13 +163,38 @@ class SeguridadWebTest {
     }
 
     @Test
+    void tokenValidoConElPermisoEntra() throws Exception {
+        mvc.perform(get("/api/prueba-seguridad/con-permiso-que-tiene").header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenValido()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void tokenValidoDeUnUsuarioSinAccesoResponde401NoAutenticado() throws Exception {
+        // Usuario borrado, inactivo o sin roles activos: PermisosEfectivos devuelve vacío.
+        Instant ahora = Instant.now();
+        String token = JwtConfigTest.firmar(encoder, ahora, ahora.plusSeconds(900), new ObjectId().toHexString());
+
+        mvc.perform(get("/api/prueba-seguridad/autenticado").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.codigo").value("NO_AUTENTICADO"));
+    }
+
+    @Test
+    void tokenConSujetoQueNoEsUnIdResponde401TokenInvalido() throws Exception {
+        Instant ahora = Instant.now();
+        String token = JwtConfigTest.firmar(encoder, ahora, ahora.plusSeconds(900), "liliana.contreras");
+
+        mvc.perform(get("/api/prueba-seguridad/autenticado").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.codigo").value("TOKEN_INVALIDO"));
+    }
+
+    @Test
     void lasRutasDeAutenticacionNoPidenToken() throws Exception {
-        // Todavía no hay controlador de login. Si la ruta es pública, la petición pasa los filtros
-        // y Spring MVC responde que no existe (404, o 405 si la atiende el manejador de archivos
-        // estáticos); lo que no puede salir es un 401.
+        // Sin token y con un cuerpo vacío, el login responde 400 de validación y no 401.
         mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(result -> assertThat(result.getResponse().getStatus()).isIn(404, 405))
-                .andExpect(jsonPath("$.codigo").value(not("NO_AUTENTICADO")));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.codigo").value("VALIDACION"));
     }
 
     @Test

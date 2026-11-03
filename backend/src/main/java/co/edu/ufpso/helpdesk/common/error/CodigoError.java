@@ -25,15 +25,22 @@ public enum CodigoError {
     SOLICITUD_INVALIDA(HttpStatus.BAD_REQUEST, "Solicitud no válida",
             "La solicitud no se pudo procesar."),
 
-    // 401. El frontend renueva el access token con /api/auth/refresh ante cualquiera de los dos.
+    // 401. Ante NO_AUTENTICADO o TOKEN_INVALIDO el frontend renueva el access token con /api/auth/refresh.
     NO_AUTENTICADO(HttpStatus.UNAUTHORIZED, "Autenticación requerida",
             "Inicie sesión para usar este recurso."),
     TOKEN_INVALIDO(HttpStatus.UNAUTHORIZED, "Token no válido",
             "El token de acceso no es válido o ya venció."),
+    // Estos dos no se resuelven con /refresh: el frontend vuelve a la pantalla de login.
+    CREDENCIALES_INVALIDAS(HttpStatus.UNAUTHORIZED, "Credenciales no válidas",
+            "El correo o la contraseña no son correctos."),
+    SESION_INVALIDA(HttpStatus.UNAUTHORIZED, "Sesión no válida",
+            "La sesión venció o se cerró. Inicie sesión de nuevo."),
 
     // 403
     ACCESO_DENEGADO(HttpStatus.FORBIDDEN, "Acceso denegado",
             "No tiene permiso para realizar esta operación."),
+    CUENTA_INACTIVA(HttpStatus.FORBIDDEN, "Cuenta inactiva",
+            "El usuario o todos sus roles están inactivos. Comuníquese con el administrador."),
     SOPORTE_BLOQUEADO(HttpStatus.FORBIDDEN, "Membresía sin soporte",
             "La membresía de la empresa no está activa o ya venció."),
 

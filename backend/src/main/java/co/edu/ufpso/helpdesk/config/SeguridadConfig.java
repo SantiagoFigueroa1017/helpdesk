@@ -3,7 +3,6 @@ package co.edu.ufpso.helpdesk.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -12,6 +11,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 
+import co.edu.ufpso.helpdesk.security.ConvertidorJwtUsuario;
 import co.edu.ufpso.helpdesk.security.ErroresSeguridad;
 
 /**
@@ -19,7 +19,8 @@ import co.edu.ufpso.helpdesk.security.ErroresSeguridad;
  *
  * <ul>
  *   <li>Sin sesión de servidor: cada petición trae su access token en {@code Authorization: Bearer}.</li>
- *   <li>El resource server valida el token con el {@code JwtDecoder} de {@code security.JwtConfig}.</li>
+ *   <li>El resource server valida el token con el {@code JwtDecoder} de {@code security.JwtConfig}, y
+ *       {@code security.ConvertidorJwtUsuario} arma el usuario con sus permisos efectivos.</li>
  *   <li>Solo los tres endpoints de autenticación son públicos. Todo lo demás exige token.</li>
  *   <li>{@code @EnableMethodSecurity} activa {@code @PreAuthorize("hasAuthority('...')")}.</li>
  * </ul>
@@ -33,11 +34,12 @@ import co.edu.ufpso.helpdesk.security.ErroresSeguridad;
 @EnableMethodSecurity
 public class SeguridadConfig {
 
-    /** Rutas públicas. Los controladores se escriben en la siguiente parte de 2.4. */
+    /** Rutas públicas: las atiende {@code auth.controller.AuthController}. */
     static final String[] RUTAS_AUTH = { "/api/auth/login", "/api/auth/refresh", "/api/auth/logout" };
 
     @Bean
-    SecurityFilterChain cadenaDeSeguridad(HttpSecurity http, ErroresSeguridad errores) throws Exception {
+    SecurityFilterChain cadenaDeSeguridad(HttpSecurity http, ErroresSeguridad errores,
+            ConvertidorJwtUsuario convertidor) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
@@ -51,7 +53,7 @@ public class SeguridadConfig {
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(o -> o
-                        .jwt(Customizer.withDefaults())
+                        .jwt(j -> j.jwtAuthenticationConverter(convertidor))
                         .authenticationEntryPoint(errores))
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint(errores)

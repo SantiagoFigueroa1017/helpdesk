@@ -18,6 +18,14 @@ spring:
     uri: ${MONGODB_URI}
     database: helpdesk
 
+  # Cachés de la sesión (acta 2.4): usuario y rol leídos para armar los permisos efectivos.
+  # Los servicios las vacían al cambiar un usuario o un rol; los 10 minutos son una red de seguridad.
+  cache:
+    type: caffeine
+    cache-names: usuariosSesion,rolesSesion
+    caffeine:
+      spec: maximumSize=5000,expireAfterWrite=10m
+
   # Lo que es propio de Spring Data sigue en spring.data.mongodb.*
   data:
     mongodb:
@@ -34,3 +42,5 @@ helpdesk:
     secreto: ${JWT_SECRET}
     vida-access-token: 15m
     vida-refresh-token: 7d
+    # Secure en la cookie del refresh token. Los navegadores la aceptan en http://localhost.
+    cookie-segura: true
