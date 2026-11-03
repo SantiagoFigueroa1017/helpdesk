@@ -11,4 +11,7 @@ import co.edu.ufpso.helpdesk.membresias.domain.Pago;
  * {@code ix_pagos_resultado_fecha} e {@code ix_pagos_membresia}.
  */
 public interface PagoRepository extends MongoRepository<Pago, ObjectId> {
+
+    /** HU04: pagos de la empresa. Usa el prefijo de {@code ix_pagos_empresa_fecha}. */
+    long countByEmpresaId(ObjectId empresaId);
 }

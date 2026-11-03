@@ -12,4 +12,7 @@ import co.edu.ufpso.helpdesk.capacitaciones.domain.SolicitudCapacitacion;
  * {@code ix_solicitudes_empresa_fecha}.
  */
 public interface SolicitudCapacitacionRepository extends MongoRepository<SolicitudCapacitacion, ObjectId> {
+
+    /** HU04: solicitudes de la empresa. Usa el prefijo de {@code ix_solicitudes_empresa_fecha}. */
+    long countByEmpresaId(ObjectId empresaId);
 }

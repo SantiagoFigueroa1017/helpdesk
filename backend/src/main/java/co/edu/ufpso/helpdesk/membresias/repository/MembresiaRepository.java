@@ -13,4 +13,7 @@ public interface MembresiaRepository extends MongoRepository<Membresia, ObjectId
 
     /** HU12: membresías que bloquean el borrado de un plan. Usa el prefijo de {@code ix_membresias_plan_estado}. */
     long countByPlanId(ObjectId planId);
+
+    /** HU04: membresía de la empresa (0 o 1). Usa {@code ux_membresias_empresa}. */
+    long countByEmpresaId(ObjectId empresaId);
 }

@@ -21,4 +21,7 @@ public interface UsuarioRepository extends MongoRepository<Usuario, ObjectId> {
     /** Usuarios con el rol entre sus {@code rolIds} (HU27, HU28). Usa {@code ix_usuarios_rolIds}. */
     @Query(value = "{ 'rolIds': ?0 }", count = true)
     long contarConRol(ObjectId rolId);
+
+    /** HU04: usuarios de la empresa. Usa el prefijo de {@code ix_usuarios_empresa_nombre}. */
+    long countByEmpresaId(ObjectId empresaId);
 }

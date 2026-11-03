@@ -12,4 +12,7 @@ import co.edu.ufpso.helpdesk.capacitaciones.domain.Capacitacion;
  * {@code ix_capacitaciones_empresa_fecha} e {@code ix_capacitaciones_instructor_fecha}.
  */
 public interface CapacitacionRepository extends MongoRepository<Capacitacion, ObjectId> {
+
+    /** HU04: capacitaciones personalizadas de la empresa. Usa el prefijo de {@code ix_capacitaciones_empresa_fecha}. */
+    long countByEmpresaId(ObjectId empresaId);
 }

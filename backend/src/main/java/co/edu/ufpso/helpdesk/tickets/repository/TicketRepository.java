@@ -13,4 +13,7 @@ import co.edu.ufpso.helpdesk.tickets.domain.Ticket;
  * aquí ({@code auto-index-creation: false}).
  */
 public interface TicketRepository extends MongoRepository<Ticket, ObjectId> {
+
+    /** HU04: tickets de la empresa. Usa el prefijo de {@code ix_tickets_empresa_estado_fecha}. */
+    long countByEmpresaId(ObjectId empresaId);
 }
