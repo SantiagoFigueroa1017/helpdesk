@@ -73,6 +73,22 @@ public class Capacitacion extends DocumentoBase {
         return estado == EstadoCapacitacion.PROGRAMADA && fechaFin != null && fechaFin.isBefore(ahora);
     }
 
+    /** Ya llegó la hora de inicio. Desde ahí se marca la asistencia (HU39) y no se aceptan inscripciones (2.8). */
+    public boolean empezo(Instant ahora) {
+        return fechaInicio != null && !fechaInicio.isAfter(ahora);
+    }
+
+    /** Estado que ve el usuario (HU34), derivado de la hora actual. */
+    public EstadoVisibleCapacitacion estadoVisible(Instant ahora) {
+        if (estado == EstadoCapacitacion.CANCELADA) {
+            return EstadoVisibleCapacitacion.CANCELADA;
+        }
+        if (realizada(ahora)) {
+            return EstadoVisibleCapacitacion.REALIZADA;
+        }
+        return empezo(ahora) ? EstadoVisibleCapacitacion.EN_CURSO : EstadoVisibleCapacitacion.PROGRAMADA;
+    }
+
     private void recalcularFechaFin() {
         this.fechaFin = (fechaInicio == null || duracionMinutos == null)
                 ? null
