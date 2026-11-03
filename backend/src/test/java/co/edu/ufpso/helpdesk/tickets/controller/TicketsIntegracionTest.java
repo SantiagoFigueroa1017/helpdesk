@@ -7,6 +7,7 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -247,6 +248,35 @@ class TicketsIntegracionTest {
         ticket("Camilo 2", clienteFerreteria, ModuloErp.COMPRAS, EstadoTicket.EN_PROCESO, agente, ahora.minus(2, ChronoUnit.HOURS));
         ticket("Diana 1", otroClienteFerreteria, ModuloErp.INVENTARIOS, EstadoTicket.ABIERTO, null, ahora.minus(1, ChronoUnit.HOURS));
         ticket("Rosa 1", clientePanaderia, ModuloErp.VENTAS_EN_SITIO, EstadoTicket.RESUELTO, agente, ahora);
+    }
+
+    private Ticket porTitulo(String titulo) {
+        return template.findAll(Ticket.class).stream().filter(t -> t.getTitulo().equals(titulo)).findFirst()
+                .orElseThrow();
+    }
+
+    private MockHttpServletRequestBuilder ponerComo(Usuario u, String ruta, String cuerpo) {
+        return como(u, put(ruta)).contentType(MediaType.APPLICATION_JSON).content(cuerpo);
+    }
+
+    private Usuario administrador() {
+        Rol rolAdmin = rol("ADMIN", AlcanceRol.GLOBAL, List.of(Permiso.TICKETS_VER, Permiso.TICKETS_CREAR,
+                Permiso.TICKETS_EDITAR, Permiso.TICKETS_ASIGNAR, Permiso.TICKETS_ASIGNAR_OTROS, Permiso.TICKETS_ELIMINAR,
+                Permiso.COMENTARIOS_CREAR, Permiso.COMENTARIOS_ELIMINAR));
+        return usuario("Liliana Contreras", "liliana@sistemasintegrados.com.co", null, rolAdmin, true);
+    }
+
+    private Usuario otroAgente(boolean activo) {
+        return usuario("Paula Ardila", "paula@sistemasintegrados.com.co", null,
+                template.findById(agente.getRolIds().get(0), Rol.class), activo);
+    }
+
+    private static String estado(String estado) {
+        return "{\"estado\":\"" + estado + "\"}";
+    }
+
+    private static String agenteId(Usuario u) {
+        return u == null ? "{\"agenteId\":null}" : "{\"agenteId\":\"" + u.getId() + "\"}";
     }
 
     private Usuario clienteAdminFerreteria() {
@@ -609,5 +639,237 @@ class TicketsIntegracionTest {
                 .andExpect(status().isNotFound());
         mvc.perform(como(agente, get("/api/tickets/" + new ObjectId())))
                 .andExpect(status().isNotFound());
+    }
+
+    // ---------- HU23 · editar ----------
+
+    private static final String EDICION_INVENTARIOS = "{\"titulo\":\"Existencia negativa en bodega 2\","
+            + "\"descripcion\":\"Ahora son -6.\",\"detalle\":{\"codigoBodega\":\"B-02\","
+            + "\"codigoProducto\":\"TOR-1/2\",\"tipoOperacion\":\"AJUSTE\"}}";
+
+    @Test
+    void elClienteEditaSuTicketAbiertoYSinAgente() throws Exception {
+        String id = id(mvc.perform(crearComo(clienteFerreteria, incidenteInventarios(null)))
+                .andExpect(status().isCreated()).andReturn());
+
+        mvc.perform(ponerComo(clienteFerreteria, "/api/tickets/" + id, EDICION_INVENTARIOS))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.titulo").value("Existencia negativa en bodega 2"))
+                .andExpect(jsonPath("$.detalle.codigoProducto").value("TOR-1/2"))
+                // El detalle se reemplaza completo: lo que no vino se borra.
+                .andExpect(jsonPath("$.detalle.existenciaSistema").doesNotExist())
+                .andExpect(jsonPath("$.modulo").value("INVENTARIOS"))
+                .andExpect(jsonPath("$.historialEstados", hasSize(1)));
+
+        assertThat(crudo(id).get("detalle", Document.class)).doesNotContainKey("existenciaSistema");
+    }
+
+    @Test
+    void elClienteNoEditaSiYaTieneAgenteNiCambiaModuloOTipo() throws Exception {
+        cuatroTickets();
+        Ticket camilo1 = porTitulo("Camilo 1");
+        Ticket camilo2 = porTitulo("Camilo 2");
+        String sugerencia = "{\"titulo\":\"T\",\"descripcion\":\"D\"}";
+
+        mvc.perform(ponerComo(clienteFerreteria, "/api/tickets/" + camilo2.getId(), sugerencia))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.detail").value(containsString("abierto y sin agente")));
+        mvc.perform(ponerComo(clienteFerreteria, "/api/tickets/" + camilo1.getId(),
+                        "{\"modulo\":\"COMPRAS\",\"titulo\":\"T\",\"descripcion\":\"D\"}"))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.detail").value(containsString("personal de soporte")));
+        // Enviar el mismo módulo y tipo no es cambiarlos.
+        mvc.perform(ponerComo(clienteFerreteria, "/api/tickets/" + camilo1.getId(),
+                        "{\"modulo\":\"INVENTARIOS\",\"tipo\":\"SUGERENCIA\",\"titulo\":\"T\",\"descripcion\":\"D\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(ponerComo(clienteFerreteria, "/api/tickets/" + camilo1.getId(),
+                        "{\"titulo\":\"T\",\"descripcion\":\"D\",\"detalle\":{\"codigoBodega\":\"B\"}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errores[0].campo").value("detalle"));
+    }
+
+    @Test
+    void soloSeEditanLosTicketsPropios() throws Exception {
+        Usuario gloria = clienteAdminFerreteria();
+        cuatroTickets();
+        String cuerpo = "{\"titulo\":\"T\",\"descripcion\":\"D\"}";
+
+        // Camilo no ve el de Diana: para él no existe.
+        mvc.perform(ponerComo(clienteFerreteria, "/api/tickets/" + porTitulo("Diana 1").getId(), cuerpo))
+                .andExpect(status().isNotFound());
+        // Gloria lo ve (TICKETS_VER), pero no es la solicitante.
+        mvc.perform(ponerComo(gloria, "/api/tickets/" + porTitulo("Diana 1").getId(), cuerpo))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.codigo").value("ACCESO_DENEGADO"));
+    }
+
+    @Test
+    void sinSoporteElTicketQuedaEnModoLectura() throws Exception {
+        Ticket deRosa = ticket("Rosa abierto", clientePanaderia, ModuloErp.VENTAS_EN_SITIO, EstadoTicket.ABIERTO, null, ahora);
+        template.getDb().getCollection("membresias").updateOne(Filters.eq("_id", membresiaPanaderia.getId()),
+                new Document("$set", new Document("estado", "SUSPENDIDA")));
+        String cuerpo = "{\"titulo\":\"T\",\"descripcion\":\"D\"}";
+
+        mvc.perform(ponerComo(clientePanaderia, "/api/tickets/" + deRosa.getId(), cuerpo))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.codigo").value("SOPORTE_BLOQUEADO"));
+        mvc.perform(ponerComo(agente, "/api/tickets/" + deRosa.getId(), cuerpo))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.codigo").value("SOPORTE_BLOQUEADO"));
+    }
+
+    @Test
+    void elAgenteCambiaModuloYTipoSoloAModulosContratados() throws Exception {
+        cuatroTickets();
+        Ticket camilo1 = porTitulo("Camilo 1");
+        String aCompras = "{\"modulo\":\"COMPRAS\",\"tipo\":\"INCIDENTE\",\"titulo\":\"Factura\","
+                + "\"descripcion\":\"No cuadra\",\"detalle\":{\"nitProveedor\":\"900111222-3\",\"etapa\":\"RECEPCION\"}}";
+        String aVentasOnline = "{\"modulo\":\"VENTAS_ONLINE\",\"tipo\":\"SUGERENCIA\",\"titulo\":\"T\","
+                + "\"descripcion\":\"D\"}";
+
+        mvc.perform(ponerComo(agente, "/api/tickets/" + camilo1.getId(), aCompras))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.modulo").value("COMPRAS"))
+                .andExpect(jsonPath("$.tipo").value("INCIDENTE"))
+                .andExpect(jsonPath("$.detalle.nitProveedor").value("900111222-3"));
+        assertThat(crudo(camilo1.getId().toHexString()).get("detalle", Document.class))
+                .containsEntry("etapa", "RECEPCION");
+        mvc.perform(ponerComo(agente, "/api/tickets/" + camilo1.getId(), aVentasOnline))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.detail").value(containsString("Ventas Online")));
+    }
+
+    // ---------- HU23 · estado ----------
+
+    @Test
+    void elAgenteAsignadoLlevaElTicketHastaCerrarloYPuedeReabrirlo() throws Exception {
+        cuatroTickets();
+        String ruta = "/api/tickets/" + porTitulo("Camilo 1").getId();
+
+        mvc.perform(ponerComo(agente, ruta + "/asignacion", agenteId(agente)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.agenteNombre").value("Andrés Pabón"))
+                .andExpect(jsonPath("$.fechaPrimeraAsignacion").exists());
+        mvc.perform(ponerComo(agente, ruta + "/estado", estado("EN_PROCESO")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fechaResolucion").doesNotExist());
+        String resuelto = mvc.perform(ponerComo(agente, ruta + "/estado", estado("RESUELTO")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fechaResolucion").exists())
+                .andReturn().getResponse().getContentAsString();
+        String fechaResolucion = JsonPath.read(resuelto, "$.fechaResolucion");
+        // De RESUELTO a CERRADO se conserva la fecha de resolución.
+        mvc.perform(ponerComo(agente, ruta + "/estado", estado("CERRADO")))
+                .andExpect(jsonPath("$.fechaResolucion").value(fechaResolucion));
+        mvc.perform(ponerComo(agente, ruta + "/estado", estado("ABIERTO")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fechaResolucion").doesNotExist())
+                .andExpect(jsonPath("$.historialEstados[*].estado").value(org.hamcrest.Matchers.contains(
+                        "ABIERTO", "EN_PROCESO", "RESUELTO", "CERRADO", "ABIERTO")))
+                .andExpect(jsonPath("$.historialEstados[4].usuarioNombre").value("Andrés Pabón"));
+        mvc.perform(ponerComo(agente, ruta + "/estado", estado("ABIERTO")))
+                .andExpect(status().isUnprocessableContent());
+    }
+
+    @Test
+    void elEstadoLoCambiaElAsignadoOUnAdministrador() throws Exception {
+        Usuario paula = otroAgente(true);
+        Usuario liliana = administrador();
+        cuatroTickets();
+        String camilo2 = "/api/tickets/" + porTitulo("Camilo 2").getId();
+        String camilo1 = "/api/tickets/" + porTitulo("Camilo 1").getId();
+
+        mvc.perform(ponerComo(paula, camilo2 + "/estado", estado("RESUELTO")))
+                .andExpect(status().isForbidden());
+        mvc.perform(ponerComo(liliana, camilo2 + "/estado", estado("RESUELTO")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.historialEstados[1].usuarioNombre").value("Liliana Contreras"));
+        // Sin agente no pasa a EN_PROCESO ni a RESUELTO, pero sí se puede cerrar (por ejemplo, un duplicado).
+        mvc.perform(ponerComo(liliana, camilo1 + "/estado", estado("EN_PROCESO")))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.detail").value(containsString("Asigne un agente")));
+        mvc.perform(ponerComo(liliana, camilo1 + "/estado", estado("CERRADO")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fechaResolucion").exists());
+        mvc.perform(ponerComo(clienteFerreteria, camilo1 + "/estado", estado("ABIERTO")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void conElHistorialLlenoNoSeCambiaElEstado() throws Exception {
+        Ticket t = ticket("Lleno", clienteFerreteria, ModuloErp.COMPRAS, EstadoTicket.ABIERTO, agente, ahora);
+        List<CambioEstado> historial = new ArrayList<>();
+        for (int i = 0; i < Ticket.MAX_HISTORIAL; i++) {
+            historial.add(new CambioEstado(i % 2 == 0 ? EstadoTicket.ABIERTO : EstadoTicket.EN_PROCESO,
+                    ahora.minus(Ticket.MAX_HISTORIAL - i, ChronoUnit.MINUTES), agente.getId()));
+        }
+        t.setHistorialEstados(historial);
+        template.save(t);
+
+        mvc.perform(ponerComo(agente, "/api/tickets/" + t.getId() + "/estado", estado("EN_PROCESO")))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.detail").value(containsString("50")));
+    }
+
+    // ---------- HU23 · asignación ----------
+
+    @Test
+    void unAgenteSoloSeAsignaTicketsSinAgente() throws Exception {
+        Usuario paula = otroAgente(true);
+        cuatroTickets();
+        String camilo1 = "/api/tickets/" + porTitulo("Camilo 1").getId();
+        String camilo2 = "/api/tickets/" + porTitulo("Camilo 2").getId();
+
+        mvc.perform(ponerComo(paula, camilo2 + "/asignacion", agenteId(paula)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.detail").value(containsString("ya tiene agente")));
+        mvc.perform(ponerComo(paula, camilo1 + "/asignacion", agenteId(agente)))
+                .andExpect(status().isForbidden());
+        mvc.perform(ponerComo(paula, camilo1 + "/asignacion", agenteId(null)))
+                .andExpect(status().isForbidden());
+        mvc.perform(ponerComo(paula, camilo1 + "/asignacion", agenteId(paula)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.agenteId").value(paula.getId().toHexString()));
+        mvc.perform(ponerComo(clienteFerreteria, camilo1 + "/asignacion", agenteId(paula)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void elAdministradorAsignaReasignaYQuitaElAgente() throws Exception {
+        Usuario paula = otroAgente(true);
+        Usuario inactivo = usuario("Iván Ortiz", "ivan@sistemasintegrados.com.co", null,
+                template.findById(agente.getRolIds().get(0), Rol.class), false);
+        Usuario liliana = administrador();
+        cuatroTickets();
+        Ticket camilo1 = porTitulo("Camilo 1");
+        String ruta1 = "/api/tickets/" + camilo1.getId();
+        String ruta2 = "/api/tickets/" + porTitulo("Camilo 2").getId();
+
+        String asignado = mvc.perform(ponerComo(liliana, ruta1 + "/asignacion", agenteId(agente)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String primera = JsonPath.read(asignado, "$.fechaPrimeraAsignacion");
+        // Reasignar no cambia la fecha de la primera asignación.
+        mvc.perform(ponerComo(liliana, ruta1 + "/asignacion", agenteId(paula)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.agenteNombre").value("Paula Ardila"))
+                .andExpect(jsonPath("$.fechaPrimeraAsignacion").value(primera));
+        mvc.perform(ponerComo(liliana, ruta1 + "/asignacion", agenteId(paula)))
+                .andExpect(status().isUnprocessableContent());
+        mvc.perform(ponerComo(liliana, ruta1 + "/asignacion", agenteId(clienteFerreteria)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.detail").value(containsString("no es un agente")));
+        mvc.perform(ponerComo(liliana, ruta1 + "/asignacion", agenteId(inactivo)))
+                .andExpect(status().isUnprocessableContent());
+        mvc.perform(ponerComo(liliana, ruta1 + "/asignacion", agenteId(null)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.agenteId").doesNotExist());
+        // Un ticket EN_PROCESO no se queda sin agente.
+        mvc.perform(ponerComo(liliana, ruta2 + "/asignacion", agenteId(null)))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.detail").value(containsString("ABIERTO")));
+        // Un ticket resuelto no se asigna.
+        mvc.perform(ponerComo(liliana, "/api/tickets/" + porTitulo("Rosa 1").getId() + "/asignacion", agenteId(paula)))
+                .andExpect(status().isUnprocessableContent());
     }
 }

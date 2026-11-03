@@ -12,6 +12,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -23,6 +24,9 @@ import co.edu.ufpso.helpdesk.common.paginacion.Pagina;
 import co.edu.ufpso.helpdesk.security.UsuarioAutenticado;
 import co.edu.ufpso.helpdesk.tickets.domain.EstadoTicket;
 import co.edu.ufpso.helpdesk.tickets.domain.TipoTicket;
+import co.edu.ufpso.helpdesk.tickets.dto.ActualizarTicketRequest;
+import co.edu.ufpso.helpdesk.tickets.dto.AsignarTicketRequest;
+import co.edu.ufpso.helpdesk.tickets.dto.CambiarEstadoRequest;
 import co.edu.ufpso.helpdesk.tickets.dto.CamposModuloResponse;
 import co.edu.ufpso.helpdesk.tickets.dto.CrearTicketRequest;
 import co.edu.ufpso.helpdesk.tickets.dto.FiltroTickets;
@@ -83,5 +87,29 @@ public class TicketController {
             @AuthenticationPrincipal UsuarioAutenticado actor) {
         TicketResponse creado = servicio.crear(solicitud, actor);
         return ResponseEntity.created(URI.create("/api/tickets/" + creado.id())).body(creado);
+    }
+
+    /** HU23: título, descripción y campos del módulo (el agente también módulo y tipo). */
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('TICKETS_EDITAR','TICKETS_EDITAR_PROPIOS')")
+    public TicketResponse actualizar(@PathVariable String id, @Valid @RequestBody ActualizarTicketRequest solicitud,
+            @AuthenticationPrincipal UsuarioAutenticado actor) {
+        return servicio.actualizar(Ids.deRuta(id), solicitud, actor);
+    }
+
+    /** HU23: lo cambia el agente asignado o quien tiene {@code TICKETS_ASIGNAR_OTROS}. */
+    @PutMapping("/{id}/estado")
+    @PreAuthorize("hasAuthority('TICKETS_EDITAR')")
+    public TicketResponse cambiarEstado(@PathVariable String id, @Valid @RequestBody CambiarEstadoRequest solicitud,
+            @AuthenticationPrincipal UsuarioAutenticado actor) {
+        return servicio.cambiarEstado(Ids.deRuta(id), solicitud, actor);
+    }
+
+    /** HU23: asignarse un ticket sin agente, o asignar y reasignar a cualquier agente. */
+    @PutMapping("/{id}/asignacion")
+    @PreAuthorize("hasAnyAuthority('TICKETS_ASIGNAR','TICKETS_ASIGNAR_OTROS')")
+    public TicketResponse asignar(@PathVariable String id, @Valid @RequestBody AsignarTicketRequest solicitud,
+            @AuthenticationPrincipal UsuarioAutenticado actor) {
+        return servicio.asignar(Ids.deRuta(id), solicitud, actor);
     }
 }

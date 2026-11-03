@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -36,12 +37,17 @@ import co.edu.ufpso.helpdesk.empresas.service.NombresEmpresaService;
 import co.edu.ufpso.helpdesk.membresias.service.ContratoEmpresa;
 import co.edu.ufpso.helpdesk.membresias.service.MembresiaService;
 import co.edu.ufpso.helpdesk.membresias.service.SoporteService;
+import co.edu.ufpso.helpdesk.security.PermisosEfectivos;
 import co.edu.ufpso.helpdesk.security.UsuarioAutenticado;
 import co.edu.ufpso.helpdesk.tickets.domain.CambioEstado;
 import co.edu.ufpso.helpdesk.tickets.domain.CatalogoDetalle;
 import co.edu.ufpso.helpdesk.tickets.domain.DetalleTicket;
 import co.edu.ufpso.helpdesk.tickets.domain.EstadoTicket;
 import co.edu.ufpso.helpdesk.tickets.domain.Ticket;
+import co.edu.ufpso.helpdesk.tickets.domain.TipoTicket;
+import co.edu.ufpso.helpdesk.tickets.dto.ActualizarTicketRequest;
+import co.edu.ufpso.helpdesk.tickets.dto.AsignarTicketRequest;
+import co.edu.ufpso.helpdesk.tickets.dto.CambiarEstadoRequest;
 import co.edu.ufpso.helpdesk.tickets.dto.CamposModuloResponse;
 import co.edu.ufpso.helpdesk.tickets.dto.CrearTicketRequest;
 import co.edu.ufpso.helpdesk.tickets.dto.FiltroTickets;
@@ -81,6 +87,23 @@ import co.edu.ufpso.helpdesk.usuarios.service.UsuarioSesionService;
  * </ul>
  * La consulta no depende del soporte: sin membresía vigente, el cliente sigue viendo sus tickets
  * (HU23, modo lectura).
+ *
+ * <p>Actualizar (HU23):
+ * <ul>
+ *   <li>Editar con {@code TICKETS_EDITAR_PROPIOS} (cliente): título, descripción y campos del módulo
+ *       de los tickets en los que es solicitante, solo si están ABIERTOS y sin agente. Con
+ *       {@code TICKETS_EDITAR} (agente): además módulo y tipo, en cualquier estado. Soporte: el
+ *       cliente con {@code exigirSoporte}, el agente con {@code exigirSoporteEmpresa} del ticket.</li>
+ *   <li>Estado: lo cambia el agente asignado o quien tiene {@code TICKETS_ASIGNAR_OTROS}
+ *       (decidido en 2.6). Cualquier estado distinto del actual (HU23). EN_PROCESO y RESUELTO exigen
+ *       agente. RESUELTO o CERRADO llenan {@code fechaResolucion} si estaba vacía; ABIERTO o
+ *       EN_PROCESO la vacían. Cada cambio entra al historial; con 50 entradas, 422.</li>
+ *   <li>Asignación: con {@code TICKETS_ASIGNAR}, a sí mismo y solo si no tiene agente; con
+ *       {@code TICKETS_ASIGNAR_OTROS}, a cualquier agente o sin agente. Agente = usuario activo de
+ *       alcance GLOBAL con {@code TICKETS_ASIGNAR} (la misma definición de A3).</li>
+ *   <li>Las tres escriben solo si el ticket no cambió desde que se leyó ({@code fechaActualizacion}
+ *       igual): si otra persona lo cambió en medio, 409 {@code CONFLICTO} y no se pisa su cambio.</li>
+ * </ul>
  */
 @Service
 public class TicketService {
@@ -105,11 +128,12 @@ public class TicketService {
     private final UsuarioSesionService usuarios;
     private final NombresUsuarioService nombresUsuarios;
     private final NombresEmpresaService nombresEmpresas;
+    private final PermisosEfectivos permisos;
     private final Clock reloj;
 
     public TicketService(TicketRepository repositorio, MongoTemplate template, SoporteService soporte,
             MembresiaService membresias, UsuarioSesionService usuarios, NombresUsuarioService nombresUsuarios,
-            NombresEmpresaService nombresEmpresas, Clock reloj) {
+            NombresEmpresaService nombresEmpresas, PermisosEfectivos permisos, Clock reloj) {
         this.repositorio = repositorio;
         this.template = template;
         this.soporte = soporte;
@@ -117,6 +141,7 @@ public class TicketService {
         this.usuarios = usuarios;
         this.nombresUsuarios = nombresUsuarios;
         this.nombresEmpresas = nombresEmpresas;
+        this.permisos = permisos;
         this.reloj = reloj;
     }
 
@@ -296,8 +321,169 @@ public class TicketService {
     }
 
     // ------------------------------------------------------------------
+    // HU23 · Editar
+    // ------------------------------------------------------------------
+
+    public TicketResponse actualizar(ObjectId id, ActualizarTicketRequest solicitud, UsuarioAutenticado actor) {
+        boolean deSoporte = actor.tiene(Permiso.TICKETS_EDITAR);
+        if (!deSoporte) {
+            // Sin soporte, el cliente ve sus tickets solo en lectura (HU23).
+            soporte.exigirSoporte(actor);
+        }
+        Ticket ticket;
+        if (deSoporte) {
+            ticket = buscarEnAlcance(id, actor);
+            soporte.exigirSoporteEmpresa(ticket.getEmpresaId());
+        } else {
+            ticket = buscarVisible(id, actor);
+            if (!ticket.getSolicitanteId().equals(actor.id())) {
+                throw new ApiException(CodigoError.ACCESO_DENEGADO,
+                        "Solo puede editar los tickets en los que usted es el solicitante.");
+            }
+            if (ticket.getEstado() != EstadoTicket.ABIERTO || ticket.getAgenteId() != null) {
+                throw new ReglaNegocioException("Solo puede editar el ticket mientras esté abierto y sin agente asignado.");
+            }
+        }
+
+        ModuloErp modulo = solicitud.modulo() == null ? ticket.getModulo() : solicitud.modulo();
+        TipoTicket tipo = solicitud.tipo() == null ? ticket.getTipo() : solicitud.tipo();
+        boolean cambiaModulo = modulo != ticket.getModulo();
+        if ((cambiaModulo || tipo != ticket.getTipo()) && !deSoporte) {
+            throw new ReglaNegocioException("Solo el personal de soporte cambia el módulo o el tipo del ticket.");
+        }
+        DetalleTicket detalle = DetalleTicketMapper.desdeSolicitud(modulo, tipo, solicitud.detalle());
+        if (cambiaModulo) {
+            ContratoEmpresa contrato = membresias.contratoDeEmpresa(ticket.getEmpresaId())
+                    .orElseThrow(() -> new ReglaNegocioException("La membresía de la empresa no tiene un plan vigente."));
+            verificarModuloContratado(modulo, contrato);
+        }
+
+        Instant leida = ticket.getFechaActualizacion();
+        ticket.setModulo(modulo);
+        ticket.setTipo(tipo);
+        ticket.setTitulo(solicitud.titulo().strip());
+        ticket.setDescripcion(solicitud.descripcion().strip());
+        ticket.setDetalle(detalle);
+        ticket.setFechaActualizacion(ahora());
+        return respuesta(guardar(ticket, leida));
+    }
+
+    // ------------------------------------------------------------------
+    // HU23 · Cambiar estado
+    // ------------------------------------------------------------------
+
+    public TicketResponse cambiarEstado(ObjectId id, CambiarEstadoRequest solicitud, UsuarioAutenticado actor) {
+        Ticket ticket = buscarEnAlcance(id, actor);
+        boolean esElAsignado = actor.id().equals(ticket.getAgenteId());
+        if (!esElAsignado && !actor.tiene(Permiso.TICKETS_ASIGNAR_OTROS)) {
+            throw new ApiException(CodigoError.ACCESO_DENEGADO,
+                    "Solo el agente asignado o un administrador cambia el estado del ticket.");
+        }
+        EstadoTicket nuevo = solicitud.estado();
+        if (nuevo == ticket.getEstado()) {
+            throw new ReglaNegocioException("El ticket ya está en estado " + nuevo + ".");
+        }
+        if ((nuevo == EstadoTicket.EN_PROCESO || nuevo == EstadoTicket.RESUELTO) && ticket.getAgenteId() == null) {
+            throw new ReglaNegocioException("Asigne un agente antes de pasar el ticket a " + nuevo + ".");
+        }
+        if (ticket.getHistorialEstados().size() >= Ticket.MAX_HISTORIAL) {
+            throw new ReglaNegocioException("El historial del ticket llegó al máximo de "
+                    + Ticket.MAX_HISTORIAL + " cambios de estado.");
+        }
+
+        Instant leida = ticket.getFechaActualizacion();
+        Instant ahora = ahora();
+        ticket.setEstado(nuevo);
+        ticket.getHistorialEstados().add(new CambioEstado(nuevo, ahora, actor.id()));
+        if (nuevo.esAbierto()) {
+            // Reabrir borra la resolución anterior (base de A1).
+            ticket.setFechaResolucion(null);
+        } else if (ticket.getFechaResolucion() == null) {
+            // RESUELTO, o CERRADO sin pasar por RESUELTO. De RESUELTO a CERRADO se conserva la fecha.
+            ticket.setFechaResolucion(ahora);
+        }
+        ticket.setFechaActualizacion(ahora);
+        return respuesta(guardar(ticket, leida));
+    }
+
+    // ------------------------------------------------------------------
+    // HU23 · Asignar
+    // ------------------------------------------------------------------
+
+    public TicketResponse asignar(ObjectId id, AsignarTicketRequest solicitud, UsuarioAutenticado actor) {
+        Ticket ticket = buscarEnAlcance(id, actor);
+        ObjectId nuevo = solicitud.agenteId() == null ? null : Ids.deCuerpo(solicitud.agenteId());
+        if (!actor.tiene(Permiso.TICKETS_ASIGNAR_OTROS)) {
+            if (!actor.id().equals(nuevo)) {
+                throw new ApiException(CodigoError.ACCESO_DENEGADO, "Solo puede asignarse tickets a usted mismo.");
+            }
+            if (ticket.getAgenteId() != null) {
+                throw new ReglaNegocioException("El ticket ya tiene agente. Solo un administrador lo reasigna.");
+            }
+        }
+        if (!ticket.getEstado().esAbierto()) {
+            throw new ReglaNegocioException("Solo se asignan tickets abiertos o en proceso.");
+        }
+        if (Objects.equals(nuevo, ticket.getAgenteId())) {
+            throw new ReglaNegocioException(nuevo == null ? "El ticket ya está sin agente."
+                    : "El ticket ya está asignado a ese agente.");
+        }
+        if (nuevo == null) {
+            if (ticket.getEstado() != EstadoTicket.ABIERTO) {
+                throw new ReglaNegocioException("Para quitar el agente, primero pase el ticket a ABIERTO.");
+            }
+        } else if (!esAgente(nuevo)) {
+            throw new ReglaNegocioException("El usuario indicado no es un agente de soporte activo.");
+        }
+
+        Instant leida = ticket.getFechaActualizacion();
+        Instant ahora = ahora();
+        ticket.setAgenteId(nuevo);
+        if (nuevo != null && ticket.getFechaPrimeraAsignacion() == null) {
+            ticket.setFechaPrimeraAsignacion(ahora);
+        }
+        ticket.setFechaActualizacion(ahora);
+        return respuesta(guardar(ticket, leida));
+    }
+
+    /** Usuario activo, de alcance GLOBAL, con {@code TICKETS_ASIGNAR} en un rol activo (definición de A3). */
+    private boolean esAgente(ObjectId usuarioId) {
+        return permisos.resolver(usuarioId)
+                .filter(u -> !u.esDeEmpresa() && u.tiene(Permiso.TICKETS_ASIGNAR))
+                .isPresent();
+    }
+
+    // ------------------------------------------------------------------
     // Reglas y utilidades
     // ------------------------------------------------------------------
+
+    /**
+     * Para el personal que gestiona tickets (editar con {@code TICKETS_EDITAR}, estado, asignación):
+     * alcance GLOBAL ve cualquiera; alcance EMPRESA, solo los de su empresa. Fuera de alcance, 404.
+     */
+    private Ticket buscarEnAlcance(ObjectId id, UsuarioAutenticado actor) {
+        Ticket ticket = repositorio.findById(id).orElseThrow(TicketService::noExiste);
+        if (actor.esDeEmpresa() && !ticket.getEmpresaId().equals(actor.empresaId())) {
+            throw noExiste();
+        }
+        return ticket;
+    }
+
+    /**
+     * Reemplaza el documento solo si sigue como se leyó. {@code findAndReplace} es atómico: busca por
+     * {@code _id} y la {@code fechaActualizacion} leída, y si otra petición ya lo cambió no encuentra
+     * nada. El documento no lleva {@code @Version} (el validador no lo admite, acta 2.3), así que
+     * {@code fechaActualizacion} hace ese papel.
+     */
+    private Ticket guardar(Ticket ticket, Instant leida) {
+        verificarCoherencia(ticket);
+        Query mismaVersion = new Query(Criteria.where("_id").is(ticket.getId()).and("fechaActualizacion").is(leida));
+        if (template.findAndReplace(mismaVersion, ticket) == null) {
+            throw new ApiException(CodigoError.CONFLICTO,
+                    "Otra persona cambió el ticket mientras usted lo editaba. Recárguelo e intente de nuevo.");
+        }
+        return ticket;
+    }
 
     /**
      * El ticket si el actor puede verlo; si no, 404. Lo usan el detalle y, en las partes siguientes,
