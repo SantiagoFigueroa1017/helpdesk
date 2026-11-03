@@ -10,7 +10,8 @@ import org.springframework.http.HttpStatus;
  *
  * <p>Cada código fija el estado HTTP, el título y un detalle por defecto. El frontend decide
  * qué mostrar leyendo la propiedad {@code codigo} del ProblemDetail, nunca el texto.
- * Los códigos de autenticación (401) y permisos (403) se agregan en 2.4.
+ * Los 401 y los 403 de Spring Security (filtros) salen por el mismo manejador que el resto
+ * (acta 2.4): ver {@code security.ErroresSeguridad}.
  */
 public enum CodigoError {
 
@@ -24,7 +25,15 @@ public enum CodigoError {
     SOLICITUD_INVALIDA(HttpStatus.BAD_REQUEST, "Solicitud no válida",
             "La solicitud no se pudo procesar."),
 
+    // 401. El frontend renueva el access token con /api/auth/refresh ante cualquiera de los dos.
+    NO_AUTENTICADO(HttpStatus.UNAUTHORIZED, "Autenticación requerida",
+            "Inicie sesión para usar este recurso."),
+    TOKEN_INVALIDO(HttpStatus.UNAUTHORIZED, "Token no válido",
+            "El token de acceso no es válido o ya venció."),
+
     // 403
+    ACCESO_DENEGADO(HttpStatus.FORBIDDEN, "Acceso denegado",
+            "No tiene permiso para realizar esta operación."),
     SOPORTE_BLOQUEADO(HttpStatus.FORBIDDEN, "Membresía sin soporte",
             "La membresía de la empresa no está activa o ya venció."),
 

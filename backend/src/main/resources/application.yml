@@ -26,3 +26,11 @@ spring:
 
 server:
   port: 8080
+
+# Seguridad (tarea 2.4). JWT firmado con HS256.
+# JWT_SECRET: 32 bytes aleatorios en Base64, en el archivo .env (ver .env.example).
+helpdesk:
+  jwt:
+    secreto: ${JWT_SECRET}
+    vida-access-token: 15m
+    vida-refresh-token: 7d

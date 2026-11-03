@@ -5,3 +5,9 @@ spring:
   mongodb:
     uri: mongodb://localhost:27017/?replicaSet=rs0
     database: helpdesk_test
+
+# Clave fija solo para pruebas (32 bytes en Base64). No sirve en dev ni en prod,
+# donde la clave sale de JWT_SECRET.
+helpdesk:
+  jwt:
+    secreto: evWQxEq/XTs3zPWacy3VjEFC/I4tQ/J3Q5SvjxlIyBA=

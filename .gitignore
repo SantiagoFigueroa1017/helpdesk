@@ -29,3 +29,5 @@ desktop.ini
 
 # Archivos comprimidos que se comparten por chat
 *.zip
+
+*.patch

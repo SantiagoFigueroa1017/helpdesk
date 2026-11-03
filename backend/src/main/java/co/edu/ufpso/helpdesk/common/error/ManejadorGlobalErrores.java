@@ -20,6 +20,9 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.validation.ObjectError;
@@ -98,6 +101,41 @@ public class ManejadorGlobalErrores extends ResponseEntityExceptionHandler {
                 request.getRequestURI());
         problema.setProperty("errores", errores);
         return responder(problema);
+    }
+
+    // ------------------------------------------------------------------
+    // Spring Security
+    // ------------------------------------------------------------------
+
+    /**
+     * Petición sin token o con un token que no se pudo validar. Llega desde los filtros a través
+     * de {@code security.ErroresSeguridad}. Un token mal firmado, mal formado o vencido es una
+     * {@link OAuth2AuthenticationException} y responde {@code TOKEN_INVALIDO}; la falta de token
+     * responde {@code NO_AUTENTICADO}. El mensaje de la excepción no sale al cliente ni lleva
+     * el token.
+     */
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ProblemDetail> manejarNoAutenticado(
+            AuthenticationException ex, HttpServletRequest request) {
+        CodigoError codigo = (ex instanceof OAuth2AuthenticationException)
+                ? CodigoError.TOKEN_INVALIDO
+                : CodigoError.NO_AUTENTICADO;
+        log.debug("{} en {}: {}", codigo, request.getRequestURI(), ex.getClass().getSimpleName());
+        return responder(crear(codigo, codigo.getDetalle(), request.getRequestURI()));
+    }
+
+    /**
+     * Usuario autenticado sin el permiso. Cubre los dos caminos: el de los filtros (vía
+     * {@code security.ErroresSeguridad}) y el de {@code @PreAuthorize}, cuya
+     * {@code AuthorizationDeniedException} sale del controlador y sin este manejador caería
+     * en {@link #manejarInesperada} como 500.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ProblemDetail> manejarAccesoDenegado(
+            AccessDeniedException ex, HttpServletRequest request) {
+        log.debug("ACCESO_DENEGADO en {}", request.getRequestURI());
+        return responder(crear(CodigoError.ACCESO_DENEGADO, CodigoError.ACCESO_DENEGADO.getDetalle(),
+                request.getRequestURI()));
     }
 
     // ------------------------------------------------------------------
