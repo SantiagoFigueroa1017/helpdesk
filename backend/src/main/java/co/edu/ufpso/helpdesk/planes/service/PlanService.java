@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.bson.types.ObjectId;
@@ -101,6 +102,14 @@ public class PlanService {
             throw noExiste();
         }
         return aRespuesta(plan);
+    }
+
+    /**
+     * Para el módulo de membresías (HU13, HU15, HU05): el plan con sus límites, sin filtro de
+     * alcance. Vacío si no existe.
+     */
+    public Optional<PlanResponse> consultar(ObjectId id) {
+        return repositorio.findById(id).map(PlanService::aRespuesta);
     }
 
     // ------------------------------------------------------------------

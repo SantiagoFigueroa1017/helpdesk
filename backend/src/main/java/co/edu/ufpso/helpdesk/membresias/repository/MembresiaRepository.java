@@ -1,7 +1,10 @@
 package co.edu.ufpso.helpdesk.membresias.repository;
 
+import java.util.Optional;
+
 import org.bson.types.ObjectId;
 import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.mongodb.repository.Query;
 
 import co.edu.ufpso.helpdesk.membresias.domain.Membresia;
 
@@ -16,4 +19,15 @@ public interface MembresiaRepository extends MongoRepository<Membresia, ObjectId
 
     /** HU04: membresía de la empresa (0 o 1). Usa {@code ux_membresias_empresa}. */
     long countByEmpresaId(ObjectId empresaId);
+
+    /** HU13: una membresía por empresa. Usa {@code ux_membresias_empresa}. */
+    boolean existsByEmpresaId(ObjectId empresaId);
+
+    /**
+     * Verificación central de soporte (contexto 7.5): solo trae {@code estado} y
+     * {@code fechaVencimiento}. Usa {@code ux_membresias_empresa}. El documento que devuelve está
+     * incompleto: sirve para {@code motivoSinSoporte} y nada más.
+     */
+    @Query(value = "{ 'empresaId': ?0 }", fields = "{ 'estado': 1, 'fechaVencimiento': 1 }")
+    Optional<Membresia> buscarParaSoporte(ObjectId empresaId);
 }

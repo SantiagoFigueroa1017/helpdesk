@@ -1,6 +1,7 @@
 package co.edu.ufpso.helpdesk.membresias.domain;
 
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -43,6 +44,39 @@ public class Membresia extends DocumentoBase {
         return estado == EstadoMembresia.ACTIVA
                 && fechaVencimiento != null
                 && !ahora.isAfter(fechaVencimiento);
+    }
+
+    /**
+     * Por qué no hay soporte, o null si lo hay. Mismo criterio que {@link #tieneSoporte(Instant)}:
+     * PENDIENTE y SUSPENDIDA salen por su estado; una ACTIVA con la fecha superada sale como VENCIDA.
+     */
+    public MotivoSinSoporte motivoSinSoporte(Instant ahora) {
+        if (estado == EstadoMembresia.PENDIENTE) {
+            return MotivoSinSoporte.PENDIENTE;
+        }
+        if (estado == EstadoMembresia.SUSPENDIDA) {
+            return MotivoSinSoporte.SUSPENDIDA;
+        }
+        return tieneSoporte(ahora) ? null : MotivoSinSoporte.VENCIDA;
+    }
+
+    /** Pago FALLIDO (HU17, HU19): la membresía pasa a SUSPENDIDA. La fecha de vencimiento no cambia. */
+    public void suspenderPorPagoFallido(Instant ahora) {
+        estado = EstadoMembresia.SUSPENDIDA;
+        setFechaActualizacion(ahora);
+    }
+
+    /**
+     * Pago APROBADO (HU17, HU19, decidido en 2.5): la membresía queda ACTIVA y su vigencia crece un
+     * mes sin perder días. Si todavía no había vencido en la fecha del pago, el mes se suma a
+     * {@code fechaVencimiento}; si ya había vencido, se cuenta desde {@code fechaPago}. El mes es de
+     * calendario en la zona indicada (Bogotá), así el 31 de enero pasa al 28 o 29 de febrero.
+     */
+    public void aplicarPagoAprobado(Instant fechaPago, ZoneId zona, Instant ahora) {
+        Instant base = fechaVencimiento != null && fechaVencimiento.isAfter(fechaPago) ? fechaVencimiento : fechaPago;
+        fechaVencimiento = base.atZone(zona).plusMonths(1).toInstant();
+        estado = EstadoMembresia.ACTIVA;
+        setFechaActualizacion(ahora);
     }
 
     public ObjectId getEmpresaId() {
