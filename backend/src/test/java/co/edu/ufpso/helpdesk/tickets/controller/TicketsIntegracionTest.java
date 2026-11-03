@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.bson.Document;
@@ -54,6 +55,10 @@ import co.edu.ufpso.helpdesk.planes.domain.NivelAcceso;
 import co.edu.ufpso.helpdesk.planes.domain.Plan;
 import co.edu.ufpso.helpdesk.roles.domain.Rol;
 import co.edu.ufpso.helpdesk.soporte.ValidadoresDePrueba;
+import co.edu.ufpso.helpdesk.tickets.domain.CambioEstado;
+import co.edu.ufpso.helpdesk.tickets.domain.EstadoTicket;
+import co.edu.ufpso.helpdesk.tickets.domain.Ticket;
+import co.edu.ufpso.helpdesk.tickets.domain.TipoTicket;
 import co.edu.ufpso.helpdesk.usuarios.domain.Usuario;
 
 /**
@@ -212,6 +217,42 @@ class TicketsIntegracionTest {
 
     private static String id(MvcResult resultado) throws Exception {
         return JsonPath.read(resultado.getResponse().getContentAsString(), "$.id");
+    }
+
+    /** Sugerencia insertada directo en la base, para controlar fechas, estado y agente. */
+    private Ticket ticket(String titulo, Usuario solicitante, ModuloErp modulo, EstadoTicket estado, Usuario agenteAsignado,
+            Instant creado) {
+        Ticket t = new Ticket();
+        t.setFechaCreacion(creado);
+        t.setFechaActualizacion(creado);
+        t.setEmpresaId(solicitante.getEmpresaId());
+        t.setCreadorId(solicitante.getId());
+        t.setSolicitanteId(solicitante.getId());
+        t.setAgenteId(agenteAsignado == null ? null : agenteAsignado.getId());
+        t.setModulo(modulo);
+        t.setTipo(TipoTicket.SUGERENCIA);
+        t.setTitulo(titulo);
+        t.setDescripcion("Descripción de " + titulo);
+        t.setEstado(estado);
+        t.setHistorialEstados(new ArrayList<>(List.of(new CambioEstado(EstadoTicket.ABIERTO, creado, solicitante.getId()))));
+        t.setFechaResolucion(null);
+        t.setFechaPrimeraAsignacion(agenteAsignado == null ? null : creado);
+        t.setFechaLimiteRespuesta(creado.plus(Duration.ofHours(HORAS_RESPUESTA)));
+        return template.insert(t);
+    }
+
+    /** Cuatro tickets: dos de Camilo, uno de Diana (Ferretería) y uno de Rosa (Panadería). */
+    private void cuatroTickets() {
+        ticket("Camilo 1", clienteFerreteria, ModuloErp.INVENTARIOS, EstadoTicket.ABIERTO, null, ahora.minus(3, ChronoUnit.HOURS));
+        ticket("Camilo 2", clienteFerreteria, ModuloErp.COMPRAS, EstadoTicket.EN_PROCESO, agente, ahora.minus(2, ChronoUnit.HOURS));
+        ticket("Diana 1", otroClienteFerreteria, ModuloErp.INVENTARIOS, EstadoTicket.ABIERTO, null, ahora.minus(1, ChronoUnit.HOURS));
+        ticket("Rosa 1", clientePanaderia, ModuloErp.VENTAS_EN_SITIO, EstadoTicket.RESUELTO, agente, ahora);
+    }
+
+    private Usuario clienteAdminFerreteria() {
+        Rol rolClienteAdmin = rol("CLIENTE_ADMIN", AlcanceRol.EMPRESA, List.of(Permiso.TICKETS_CREAR, Permiso.TICKETS_VER,
+                Permiso.TICKETS_EDITAR_PROPIOS, Permiso.COMENTARIOS_CREAR));
+        return usuario("Gloria Peña", "gloria@ferreteria.co", ferreteria.getId(), rolClienteAdmin, true);
     }
 
     // ---------- formulario dinámico ----------
@@ -407,5 +448,166 @@ class TicketsIntegracionTest {
                 .andExpect(jsonPath("$.errores[*].campo").value(hasItem("tipo")))
                 .andExpect(jsonPath("$.errores[*].campo").value(hasItem("titulo")))
                 .andExpect(jsonPath("$.errores[*].campo").value(hasItem("descripcion")));
+    }
+
+    // ---------- HU22 · consultar ----------
+
+    @Test
+    void elClienteSoloVeLosTicketsEnLosQueEsSolicitante() throws Exception {
+        cuatroTickets();
+        Ticket deDiana = template.findAll(Ticket.class).stream().filter(t -> t.getTitulo().equals("Diana 1")).findFirst()
+                .orElseThrow();
+
+        mvc.perform(como(clienteFerreteria, get("/api/tickets")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElementos").value(2))
+                // Orden por defecto: los más recientes primero.
+                .andExpect(jsonPath("$.contenido[0].titulo").value("Camilo 2"))
+                .andExpect(jsonPath("$.contenido[1].titulo").value("Camilo 1"));
+        mvc.perform(como(clienteFerreteria, get("/api/tickets/" + deDiana.getId())))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.codigo").value("RECURSO_NO_ENCONTRADO"));
+    }
+
+    @Test
+    void elClienteVeLosQueUnAgenteCreoASuNombre() throws Exception {
+        String id = id(mvc.perform(crearComo(agente, incidenteInventarios(clienteFerreteria.getId().toHexString())))
+                .andExpect(status().isCreated()).andReturn());
+
+        mvc.perform(como(clienteFerreteria, get("/api/tickets")))
+                .andExpect(jsonPath("$.totalElementos").value(1))
+                .andExpect(jsonPath("$.contenido[0].id").value(id));
+        mvc.perform(como(clienteFerreteria, get("/api/tickets/" + id)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void elClienteAdminVeTodosLosDeSuEmpresaYSoloEsos() throws Exception {
+        Usuario gloria = clienteAdminFerreteria();
+        cuatroTickets();
+        Ticket deRosa = template.findAll(Ticket.class).stream().filter(t -> t.getTitulo().equals("Rosa 1")).findFirst()
+                .orElseThrow();
+
+        mvc.perform(como(gloria, get("/api/tickets")))
+                .andExpect(jsonPath("$.totalElementos").value(3));
+        // El empresaId de la URL no cambia su alcance.
+        mvc.perform(como(gloria, get("/api/tickets").param("empresaId", panaderia.getId().toHexString())))
+                .andExpect(jsonPath("$.totalElementos").value(3));
+        mvc.perform(como(gloria, get("/api/tickets/" + deRosa.getId())))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void elAgenteVeTodosYFiltra() throws Exception {
+        cuatroTickets();
+
+        mvc.perform(como(agente, get("/api/tickets")))
+                .andExpect(jsonPath("$.totalElementos").value(4));
+        mvc.perform(como(agente, get("/api/tickets").param("empresaId", panaderia.getId().toHexString())))
+                .andExpect(jsonPath("$.totalElementos").value(1))
+                .andExpect(jsonPath("$.contenido[0].empresaNombre").value("Panadería La Espiga"));
+        mvc.perform(como(agente, get("/api/tickets").param("sinAsignar", "true")))
+                .andExpect(jsonPath("$.totalElementos").value(2));
+        mvc.perform(como(agente, get("/api/tickets").param("agenteId", agente.getId().toHexString())))
+                .andExpect(jsonPath("$.totalElementos").value(2))
+                .andExpect(jsonPath("$.contenido[0].agenteNombre").value("Andrés Pabón"));
+        mvc.perform(como(agente, get("/api/tickets").param("estado", "ABIERTO").param("modulo", "INVENTARIOS")))
+                .andExpect(jsonPath("$.totalElementos").value(2));
+        mvc.perform(como(agente, get("/api/tickets").param("tipo", "INCIDENTE")))
+                .andExpect(jsonPath("$.totalElementos").value(0));
+        mvc.perform(como(agente, get("/api/tickets").param("agenteId", agente.getId().toHexString())
+                        .param("sinAsignar", "true")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.codigo").value("PARAMETRO_INVALIDO"));
+        mvc.perform(como(agente, get("/api/tickets").param("estado", "PERDIDO")))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void elRangoDeFechasUsaDiasCompletosEnHoraDeBogota() throws Exception {
+        // Bogotá es UTC-5: 04:00Z del 1 de octubre todavía es 30 de septiembre allá.
+        ticket("30 sep", clienteFerreteria, ModuloErp.COMPRAS, EstadoTicket.ABIERTO, null, Instant.parse("2026-10-01T04:00:00Z"));
+        ticket("1 oct", clienteFerreteria, ModuloErp.COMPRAS, EstadoTicket.ABIERTO, null, Instant.parse("2026-10-01T06:00:00Z"));
+        ticket("31 oct", clienteFerreteria, ModuloErp.COMPRAS, EstadoTicket.ABIERTO, null, Instant.parse("2026-11-01T04:30:00Z"));
+        ticket("1 nov", clienteFerreteria, ModuloErp.COMPRAS, EstadoTicket.ABIERTO, null, Instant.parse("2026-11-01T05:30:00Z"));
+
+        mvc.perform(como(agente, get("/api/tickets").param("desde", "2026-10-01").param("hasta", "2026-10-31")))
+                .andExpect(jsonPath("$.totalElementos").value(2))
+                .andExpect(jsonPath("$.contenido[*].titulo").value(containsInAnyOrder("1 oct", "31 oct")));
+        mvc.perform(como(agente, get("/api/tickets").param("desde", "2026-11-01")))
+                .andExpect(jsonPath("$.totalElementos").value(1));
+        mvc.perform(como(agente, get("/api/tickets").param("desde", "2026-10-31").param("hasta", "2026-10-01")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.codigo").value("PARAMETRO_INVALIDO"));
+    }
+
+    @Test
+    void elListadoSeOrdenaPorFechaLimiteYSoloPorCamposConIndice() throws Exception {
+        cuatroTickets();
+
+        mvc.perform(como(agente, get("/api/tickets").param("estado", "ABIERTO")
+                        .param("orden", "fechaLimiteRespuesta,asc")))
+                .andExpect(jsonPath("$.contenido[0].titulo").value("Camilo 1"))
+                .andExpect(jsonPath("$.contenido[1].titulo").value("Diana 1"));
+        mvc.perform(como(agente, get("/api/tickets").param("orden", "titulo,asc")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.codigo").value("PARAMETRO_INVALIDO"));
+    }
+
+    @Test
+    void elListadoTraeElResumenConNombresYSinDetalle() throws Exception {
+        mvc.perform(crearComo(clienteFerreteria, incidenteInventarios(null))).andExpect(status().isCreated());
+
+        mvc.perform(como(clienteFerreteria, get("/api/tickets")))
+                .andExpect(jsonPath("$.contenido[0].solicitanteNombre").value("Camilo Quintero"))
+                .andExpect(jsonPath("$.contenido[0].empresaNombre").value("Ferretería El Tornillo"))
+                .andExpect(jsonPath("$.contenido[0].fechaLimiteRespuesta").exists())
+                .andExpect(jsonPath("$.contenido[0].detalle").doesNotExist())
+                .andExpect(jsonPath("$.contenido[0].descripcion").doesNotExist());
+    }
+
+    @Test
+    void elDetalleTraeLosCamposDelModuloYLosNombres() throws Exception {
+        Usuario otroAgente = usuario("Paula Ardila", "paula@sistemasintegrados.com.co", null,
+                template.findById(agente.getRolIds().get(0), Rol.class), true);
+        String id = id(mvc.perform(crearComo(otroAgente, incidenteInventarios(clienteFerreteria.getId().toHexString())))
+                .andExpect(status().isCreated()).andReturn());
+        template.remove(otroAgente);
+
+        mvc.perform(como(clienteFerreteria, get("/api/tickets/" + id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.descripcion").value("La bodega 2 muestra -4 unidades."))
+                .andExpect(jsonPath("$.detalle.codigoBodega").value("B-02"))
+                .andExpect(jsonPath("$.detalle.tipoOperacion").value("AJUSTE"))
+                .andExpect(jsonPath("$.solicitanteNombre").value("Camilo Quintero"))
+                // Quien lo creó ya no existe (modelo 1.2, referencias sin documento).
+                .andExpect(jsonPath("$.creadorNombre").value("Usuario eliminado"))
+                .andExpect(jsonPath("$.historialEstados[0].usuarioNombre").value("Usuario eliminado"))
+                .andExpect(jsonPath("$.agenteNombre").doesNotExist());
+    }
+
+    @Test
+    void sinSoporteElClienteSigueViendoSusTickets() throws Exception {
+        cuatroTickets();
+        template.getDb().getCollection("membresias").updateOne(Filters.eq("_id", membresiaPanaderia.getId()),
+                new Document("$set", new Document("estado", "SUSPENDIDA")));
+        Ticket deRosa = template.findAll(Ticket.class).stream().filter(t -> t.getTitulo().equals("Rosa 1")).findFirst()
+                .orElseThrow();
+
+        mvc.perform(como(clientePanaderia, get("/api/tickets")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElementos").value(1));
+        mvc.perform(como(clientePanaderia, get("/api/tickets/" + deRosa.getId())))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void consultarExigePermisoYUnIdValido() throws Exception {
+        mvc.perform(como(soloConsulta, get("/api/tickets")))
+                .andExpect(status().isForbidden());
+        mvc.perform(como(agente, get("/api/tickets/no-es-un-id")))
+                .andExpect(status().isNotFound());
+        mvc.perform(como(agente, get("/api/tickets/" + new ObjectId())))
+                .andExpect(status().isNotFound());
     }
 }
