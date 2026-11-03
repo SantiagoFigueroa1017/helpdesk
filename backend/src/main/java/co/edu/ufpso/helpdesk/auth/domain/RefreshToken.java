@@ -10,9 +10,11 @@ import co.edu.ufpso.helpdesk.common.dominio.DocumentoBase;
 /**
  * Documento de la colección técnica {@code refreshTokens}. Modelo 1.2, sección 13.
  *
- * <p>Una sesión activa. Se guarda el hash del token, nunca el token (contexto 8.3); el formato
- * del hash y la rotación se fijan en 2.4. El índice TTL {@code ttl_refresh_expiraEn}
- * borra el documento cuando pasa {@code expiraEn}.
+ * <p>Una sesión activa. Se guarda el hash del token, nunca el token (contexto 8.3). Desde 2.4,
+ * {@code tokenHash} es el SHA-256 del refresh token en hexadecimal minúscula (64 caracteres), y
+ * el validador rechaza cualquier otro formato. El token que recibe el cliente son 32 bytes de
+ * {@code SecureRandom} en Base64URL, con vida de 7 días. El índice TTL
+ * {@code ttl_refresh_expiraEn} borra el documento cuando pasa {@code expiraEn}.
  */
 @Document("refreshTokens")
 public class RefreshToken extends DocumentoBase {

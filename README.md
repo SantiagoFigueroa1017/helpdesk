@@ -25,7 +25,7 @@ La base se llama `helpdesk` y tiene 13 colecciones. Cada colección se crea con 
 
 1. Abrir MongoDB Compass y conectarse a Atlas o a `mongodb://localhost:27017/?directConnection=true`.
 2. Abrir la consola mongosh de Compass y pegar `database/validadores/00_todos_los_validadores.js`.
-3. Para comprobar, pegar `database/pruebas/00_pruebas_12_colecciones.js`, que debe mostrar `70/70`, y luego `database/pruebas/07_tickets_pruebas.js`, que debe mostrar `19/19`.
+3. Para comprobar, pegar `database/pruebas/00_pruebas_12_colecciones.js`, que debe mostrar `73/73`, y luego `database/pruebas/07_tickets_pruebas.js`, que debe mostrar `19/19`.
 
 Los scripts se pueden correr varias veces: si la colección ya existe, actualizan su validador con `collMod`. El usuario de la conexión necesita el rol `dbAdmin` sobre `helpdesk`.
 

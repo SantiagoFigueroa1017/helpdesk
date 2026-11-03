@@ -7,9 +7,10 @@
 // helpdesk_pruebas, inserta los documentos de prueba y al final borra esa
 // base. No toca los datos de helpdesk.
 //
-// Resultado esperado al final: 23 aceptados, 47 rechazados y
-// 70/70 casos con el resultado esperado.
+// Resultado esperado al final: 23 aceptados, 50 rechazados y
+// 73/73 casos con el resultado esperado.
 // El caso "con _class de Spring Data" comprueba la decisión de 2.3.
+// Los tres casos de tokenHash comprueban el formato SHA-256 de 2.4.
 // =====================================================================
 
 (function () {
@@ -287,7 +288,13 @@
 
     // refreshTokens
     ["refreshTokens", "token vigente", true, token()],
-    ["refreshTokens", "expiraEn como texto", false, con(token, { expiraEn: "2026-11-09" })]
+    ["refreshTokens", "expiraEn como texto", false, con(token, { expiraEn: "2026-11-09" })],
+    ["refreshTokens", "tokenHash en mayúsculas", false,
+      con(token, { tokenHash: "3F1C9A7E0B5D4E2F8A6C1B9D7E3F5A2C4B6D8E0F1A3C5E7B9D2F4A6C8E0B1D3F" })],
+    ["refreshTokens", "tokenHash de 63 caracteres", false,
+      con(token, { tokenHash: "3f1c9a7e0b5d4e2f8a6c1b9d7e3f5a2c4b6d8e0f1a3c5e7b9d2f4a6c8e0b1d3" })],
+    ["refreshTokens", "token sin hash (Base64URL)", false,
+      con(token, { tokenHash: "q8Zr2bN4xT0vLk7sW1mYc9pQe3hJd6fAu5gHo2iRtXk" })]
   ];
 
   let correctos = 0;

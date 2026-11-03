@@ -1,21 +1,19 @@
 // =====================================================================
-// Validador $jsonSchema de la colección refreshTokens (tarea 1.3)
+// Validador $jsonSchema de la colección refreshTokens (tarea 1.3, tokenHash en 2.4)
 // Base de datos: helpdesk · Fuente: modelo/MODELO_DATOS_1.2.md, sección 13
 // Ejecución: pegar en la consola mongosh de Compass, o
 //   mongosh "<cadena>" --file database/validadores/13_refreshTokens.js
 // Crea la colección o reemplaza su validador con collMod.
 //
-// tokenHash acepta cualquier texto de hasta 128 caracteres: la función de
-// hash se elige en 2.4. Si se fija SHA-256, se puede cambiar por
-// pattern "^[0-9a-f]{64}$".
+// tokenHash es el SHA-256 del refresh token en hexadecimal minúscula:
+// exactamente 64 caracteres de 0-9 y a-f (DECIDIDO en 2.4). El token que
+// recibe el cliente (32 bytes aleatorios en Base64URL) nunca se guarda.
 // expiraEn debe ser date para que funcione el índice TTL de la tarea 1.4.
 // =====================================================================
 
 (function () {
   const helpdesk = db.getSiblingDB("helpdesk");
   const NOMBRE = "refreshTokens";
-
-  const texto = (max) => ({ bsonType: "string", minLength: 1, maxLength: max, pattern: "\\S" });
 
   const validador = {
     $jsonSchema: {
@@ -31,7 +29,7 @@
         fechaActualizacion: { bsonType: "date" },
 
         usuarioId: { bsonType: "objectId" },
-        tokenHash: texto(128),
+        tokenHash: { bsonType: "string", pattern: "^[0-9a-f]{64}$" },
         expiraEn: { bsonType: "date" }
       }
     }
