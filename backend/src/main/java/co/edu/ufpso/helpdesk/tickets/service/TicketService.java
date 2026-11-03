@@ -22,6 +22,7 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import co.edu.ufpso.helpdesk.common.dominio.Ids;
 import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
@@ -33,6 +34,7 @@ import co.edu.ufpso.helpdesk.common.error.RecursoNoEncontradoException;
 import co.edu.ufpso.helpdesk.common.error.ReglaNegocioException;
 import co.edu.ufpso.helpdesk.common.paginacion.Pagina;
 import co.edu.ufpso.helpdesk.common.paginacion.Paginacion;
+import co.edu.ufpso.helpdesk.conocimiento.service.ArticulosPorTicketService;
 import co.edu.ufpso.helpdesk.empresas.service.NombresEmpresaService;
 import co.edu.ufpso.helpdesk.membresias.service.ContratoEmpresa;
 import co.edu.ufpso.helpdesk.membresias.service.MembresiaService;
@@ -50,12 +52,14 @@ import co.edu.ufpso.helpdesk.tickets.dto.AsignarTicketRequest;
 import co.edu.ufpso.helpdesk.tickets.dto.CambiarEstadoRequest;
 import co.edu.ufpso.helpdesk.tickets.dto.CamposModuloResponse;
 import co.edu.ufpso.helpdesk.tickets.dto.CrearTicketRequest;
+import co.edu.ufpso.helpdesk.tickets.dto.EliminacionTicketResponse;
 import co.edu.ufpso.helpdesk.tickets.dto.FiltroTickets;
 import co.edu.ufpso.helpdesk.tickets.dto.TicketResponse;
 import co.edu.ufpso.helpdesk.tickets.dto.TicketResumenResponse;
 import co.edu.ufpso.helpdesk.tickets.mapper.DetalleTicketMapper;
 import co.edu.ufpso.helpdesk.tickets.mapper.NombresTicket;
 import co.edu.ufpso.helpdesk.tickets.mapper.TicketMapper;
+import co.edu.ufpso.helpdesk.tickets.repository.ComentarioTicketRepository;
 import co.edu.ufpso.helpdesk.tickets.repository.TicketRepository;
 import co.edu.ufpso.helpdesk.usuarios.service.NombresUsuarioService;
 import co.edu.ufpso.helpdesk.usuarios.service.UsuarioSesion;
@@ -104,6 +108,9 @@ import co.edu.ufpso.helpdesk.usuarios.service.UsuarioSesionService;
  *   <li>Las tres escriben solo si el ticket no cambió desde que se leyó ({@code fechaActualizacion}
  *       igual): si otra persona lo cambió en medio, 409 {@code CONFLICTO} y no se pisa su cambio.</li>
  * </ul>
+ *
+ * <p>Eliminar (HU24): borrado físico en una transacción. Se borran los comentarios, se quita el
+ * ticket de {@code articulos.ticketIds} y se borra el ticket. Si un paso falla, no se aplica ninguno.
  */
 @Service
 public class TicketService {
@@ -122,6 +129,8 @@ public class TicketService {
             "titulo", "estado", "fechaLimiteRespuesta", "fechaResolucion", "fechaCreacion" };
 
     private final TicketRepository repositorio;
+    private final ComentarioTicketRepository comentarios;
+    private final ArticulosPorTicketService articulos;
     private final MongoTemplate template;
     private final SoporteService soporte;
     private final MembresiaService membresias;
@@ -131,10 +140,13 @@ public class TicketService {
     private final PermisosEfectivos permisos;
     private final Clock reloj;
 
-    public TicketService(TicketRepository repositorio, MongoTemplate template, SoporteService soporte,
+    public TicketService(TicketRepository repositorio, ComentarioTicketRepository comentarios,
+            ArticulosPorTicketService articulos, MongoTemplate template, SoporteService soporte,
             MembresiaService membresias, UsuarioSesionService usuarios, NombresUsuarioService nombresUsuarios,
             NombresEmpresaService nombresEmpresas, PermisosEfectivos permisos, Clock reloj) {
         this.repositorio = repositorio;
+        this.comentarios = comentarios;
+        this.articulos = articulos;
         this.template = template;
         this.soporte = soporte;
         this.membresias = membresias;
@@ -454,6 +466,24 @@ public class TicketService {
     }
 
     // ------------------------------------------------------------------
+    // HU24 · Eliminar
+    // ------------------------------------------------------------------
+
+    /**
+     * Pasos del modelo 1.2, en orden y en una sola transacción: comentarios
+     * ({@code ix_comentarios_ticket_fecha}), referencias en artículos ({@code ix_articulos_ticketIds})
+     * y el ticket. La confirmación previa la pide el frontend (HU24).
+     */
+    @Transactional
+    public EliminacionTicketResponse eliminar(ObjectId id, UsuarioAutenticado actor) {
+        Ticket ticket = buscarEnAlcance(id, actor);
+        long comentariosEliminados = comentarios.deleteByTicketId(ticket.getId());
+        long articulosDesvinculados = articulos.desvincular(ticket.getId());
+        repositorio.deleteById(ticket.getId());
+        return new EliminacionTicketResponse(comentariosEliminados, articulosDesvinculados);
+    }
+
+    // ------------------------------------------------------------------
     // Reglas y utilidades
     // ------------------------------------------------------------------
 
@@ -461,7 +491,7 @@ public class TicketService {
      * Para el personal que gestiona tickets (editar con {@code TICKETS_EDITAR}, estado, asignación):
      * alcance GLOBAL ve cualquiera; alcance EMPRESA, solo los de su empresa. Fuera de alcance, 404.
      */
-    private Ticket buscarEnAlcance(ObjectId id, UsuarioAutenticado actor) {
+    Ticket buscarEnAlcance(ObjectId id, UsuarioAutenticado actor) {
         Ticket ticket = repositorio.findById(id).orElseThrow(TicketService::noExiste);
         if (actor.esDeEmpresa() && !ticket.getEmpresaId().equals(actor.empresaId())) {
             throw noExiste();

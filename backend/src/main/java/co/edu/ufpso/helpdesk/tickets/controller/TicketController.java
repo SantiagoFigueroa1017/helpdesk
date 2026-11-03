@@ -9,6 +9,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,6 +30,7 @@ import co.edu.ufpso.helpdesk.tickets.dto.AsignarTicketRequest;
 import co.edu.ufpso.helpdesk.tickets.dto.CambiarEstadoRequest;
 import co.edu.ufpso.helpdesk.tickets.dto.CamposModuloResponse;
 import co.edu.ufpso.helpdesk.tickets.dto.CrearTicketRequest;
+import co.edu.ufpso.helpdesk.tickets.dto.EliminacionTicketResponse;
 import co.edu.ufpso.helpdesk.tickets.dto.FiltroTickets;
 import co.edu.ufpso.helpdesk.tickets.dto.TicketResponse;
 import co.edu.ufpso.helpdesk.tickets.dto.TicketResumenResponse;
@@ -111,5 +113,15 @@ public class TicketController {
     public TicketResponse asignar(@PathVariable String id, @Valid @RequestBody AsignarTicketRequest solicitud,
             @AuthenticationPrincipal UsuarioAutenticado actor) {
         return servicio.asignar(Ids.deRuta(id), solicitud, actor);
+    }
+
+    /**
+     * HU24: borrado físico del ticket, sus comentarios y sus referencias en artículos, en una
+     * transacción. Responde 200 con lo que se borró.
+     */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('TICKETS_ELIMINAR')")
+    public EliminacionTicketResponse eliminar(@PathVariable String id, @AuthenticationPrincipal UsuarioAutenticado actor) {
+        return servicio.eliminar(Ids.deRuta(id), actor);
     }
 }

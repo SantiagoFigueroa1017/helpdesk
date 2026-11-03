@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -47,6 +48,7 @@ import com.mongodb.client.model.Filters;
 import co.edu.ufpso.helpdesk.common.dominio.AlcanceRol;
 import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
 import co.edu.ufpso.helpdesk.common.dominio.Permiso;
+import co.edu.ufpso.helpdesk.conocimiento.domain.Articulo;
 import co.edu.ufpso.helpdesk.empresas.domain.Contacto;
 import co.edu.ufpso.helpdesk.empresas.domain.Empresa;
 import co.edu.ufpso.helpdesk.membresias.domain.EstadoMembresia;
@@ -57,6 +59,7 @@ import co.edu.ufpso.helpdesk.planes.domain.Plan;
 import co.edu.ufpso.helpdesk.roles.domain.Rol;
 import co.edu.ufpso.helpdesk.soporte.ValidadoresDePrueba;
 import co.edu.ufpso.helpdesk.tickets.domain.CambioEstado;
+import co.edu.ufpso.helpdesk.tickets.domain.ComentarioTicket;
 import co.edu.ufpso.helpdesk.tickets.domain.EstadoTicket;
 import co.edu.ufpso.helpdesk.tickets.domain.Ticket;
 import co.edu.ufpso.helpdesk.tickets.domain.TipoTicket;
@@ -277,6 +280,29 @@ class TicketsIntegracionTest {
 
     private static String agenteId(Usuario u) {
         return u == null ? "{\"agenteId\":null}" : "{\"agenteId\":\"" + u.getId() + "\"}";
+    }
+
+    private MockHttpServletRequestBuilder comentarComo(Usuario u, String ticketId, String texto) {
+        return como(u, post("/api/tickets/" + ticketId + "/comentarios")).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"texto\":\"" + texto + "\"}");
+    }
+
+    private Articulo articulo(String titulo, ObjectId... ticketIds) {
+        Articulo a = new Articulo();
+        a.setFechaCreacion(ahora);
+        a.setFechaActualizacion(ahora);
+        a.setTitulo(titulo);
+        a.setContenido("Pasos para resolver: " + titulo);
+        a.setModulo(ModuloErp.INVENTARIOS);
+        a.setEtiquetas(List.of("inventario"));
+        a.setTicketIds(new ArrayList<>(List.of(ticketIds)));
+        a.setAutorId(agente.getId());
+        return template.insert(a);
+    }
+
+    private long comentariosDe(String ticketId) {
+        return template.getDb().getCollection("comentariosTicket")
+                .countDocuments(Filters.eq("ticketId", new ObjectId(ticketId)));
     }
 
     private Usuario clienteAdminFerreteria() {
@@ -871,5 +897,150 @@ class TicketsIntegracionTest {
         // Un ticket resuelto no se asigna.
         mvc.perform(ponerComo(liliana, "/api/tickets/" + porTitulo("Rosa 1").getId() + "/asignacion", agenteId(paula)))
                 .andExpect(status().isUnprocessableContent());
+    }
+
+    // ---------- HU24 · eliminar ----------
+
+    @Test
+    void elAdministradorEliminaElTicketSusComentariosYSusReferencias() throws Exception {
+        Usuario liliana = administrador();
+        String id = id(mvc.perform(crearComo(clienteFerreteria, incidenteInventarios(null)))
+                .andExpect(status().isCreated()).andReturn());
+        mvc.perform(comentarComo(clienteFerreteria, id, "Sigue pasando")).andExpect(status().isCreated());
+        mvc.perform(comentarComo(agente, id, "Lo reviso")).andExpect(status().isCreated());
+        ObjectId otroTicket = new ObjectId();
+        Articulo conAmbos = articulo("Ajuste de existencias", new ObjectId(id), otroTicket);
+        Articulo sinElTicket = articulo("Códigos de barras", otroTicket);
+
+        mvc.perform(como(agente, delete("/api/tickets/" + id)))
+                .andExpect(status().isForbidden());
+        mvc.perform(como(liliana, delete("/api/tickets/" + id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.comentariosEliminados").value(2))
+                .andExpect(jsonPath("$.articulosDesvinculados").value(1));
+
+        assertThat(crudo(id)).isNull();
+        assertThat(comentariosDe(id)).isZero();
+        assertThat(template.findById(conAmbos.getId(), Articulo.class).getTicketIds()).containsExactly(otroTicket);
+        assertThat(template.findById(sinElTicket.getId(), Articulo.class).getTicketIds()).containsExactly(otroTicket);
+        mvc.perform(como(liliana, delete("/api/tickets/" + id)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void siUnPasoDelBorradoFallaNoSeBorraNada() throws Exception {
+        Usuario liliana = administrador();
+        String id = id(mvc.perform(crearComo(clienteFerreteria, incidenteInventarios(null)))
+                .andExpect(status().isCreated()).andReturn());
+        mvc.perform(comentarComo(clienteFerreteria, id, "Sigue pasando")).andExpect(status().isCreated());
+        Articulo soloEste = articulo("Ajuste de existencias", new ObjectId(id));
+        // Los artículos de la base de pruebas ya no aceptan quedar sin tickets: el $pull falla
+        // después de borrar los comentarios, dentro de la transacción.
+        template.getDb().runCommand(new Document("collMod", "articulos")
+                .append("validator", new Document("ticketIds.0", new Document("$exists", true))));
+
+        mvc.perform(como(liliana, delete("/api/tickets/" + id)))
+                .andExpect(status().isInternalServerError());
+
+        assertThat(crudo(id)).isNotNull();
+        assertThat(comentariosDe(id)).isEqualTo(1);
+        assertThat(template.findById(soloEste.getId(), Articulo.class).getTicketIds()).containsExactly(new ObjectId(id));
+    }
+
+    // ---------- comentarios ----------
+
+    @Test
+    void laConversacionSeLeeEnOrdenConElNombreDelAutor() throws Exception {
+        String id = id(mvc.perform(crearComo(clienteFerreteria, incidenteInventarios(null)))
+                .andExpect(status().isCreated()).andReturn());
+
+        mvc.perform(comentarComo(clienteFerreteria, id, "  Sigue pasando  "))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.texto").value("Sigue pasando"))
+                .andExpect(jsonPath("$.autorNombre").value("Camilo Quintero"))
+                .andExpect(jsonPath("$.editado").value(false));
+        mvc.perform(comentarComo(agente, id, "Lo reviso")).andExpect(status().isCreated());
+
+        mvc.perform(como(clienteFerreteria, get("/api/tickets/" + id + "/comentarios")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElementos").value(2))
+                .andExpect(jsonPath("$.contenido[0].texto").value("Sigue pasando"))
+                .andExpect(jsonPath("$.contenido[1].autorNombre").value("Andrés Pabón"));
+        // Diana no ve el ticket de Camilo, así que tampoco su conversación.
+        mvc.perform(como(otroClienteFerreteria, get("/api/tickets/" + id + "/comentarios")))
+                .andExpect(status().isNotFound());
+        mvc.perform(comentarComo(otroClienteFerreteria, id, "Hola"))
+                .andExpect(status().isNotFound());
+        mvc.perform(comentarComo(clienteFerreteria, id, " "))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void soloSeComentaEnTicketsAbiertosYConSoporte() throws Exception {
+        Ticket resuelto = ticket("Resuelto", clientePanaderia, ModuloErp.VENTAS_EN_SITIO, EstadoTicket.RESUELTO, agente, ahora);
+        Ticket abierto = ticket("Abierto", clientePanaderia, ModuloErp.VENTAS_EN_SITIO, EstadoTicket.ABIERTO, null, ahora);
+
+        mvc.perform(comentarComo(clientePanaderia, resuelto.getId().toHexString(), "Hola"))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.detail").value(containsString("RESUELTO")));
+
+        template.getDb().getCollection("membresias").updateOne(Filters.eq("_id", membresiaPanaderia.getId()),
+                new Document("$set", new Document("estado", "SUSPENDIDA")));
+        mvc.perform(comentarComo(clientePanaderia, abierto.getId().toHexString(), "Hola"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.motivo").value("SUSPENDIDA"));
+        mvc.perform(comentarComo(agente, abierto.getId().toHexString(), "Hola"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.codigo").value("SOPORTE_BLOQUEADO"));
+        // Leer sigue permitido.
+        mvc.perform(como(clientePanaderia, get("/api/tickets/" + abierto.getId() + "/comentarios")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void soloElAutorEditaSuComentario() throws Exception {
+        Usuario gloria = clienteAdminFerreteria();
+        String id = id(mvc.perform(crearComo(clienteFerreteria, incidenteInventarios(null)))
+                .andExpect(status().isCreated()).andReturn());
+        String comentario = JsonPath.read(mvc.perform(comentarComo(clienteFerreteria, id, "Primera versión"))
+                .andReturn().getResponse().getContentAsString(), "$.id");
+        String cuerpo = "{\"texto\":\"Segunda versión\"}";
+
+        mvc.perform(ponerComo(gloria, "/api/comentarios/" + comentario, cuerpo))
+                .andExpect(status().isForbidden());
+        mvc.perform(ponerComo(clienteFerreteria, "/api/comentarios/" + comentario, cuerpo))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.texto").value("Segunda versión"))
+                .andExpect(jsonPath("$.editado").value(true));
+
+        template.getDb().getCollection("tickets").updateOne(Filters.eq("_id", new ObjectId(id)),
+                new Document("$set", new Document("estado", "CERRADO")));
+        mvc.perform(ponerComo(clienteFerreteria, "/api/comentarios/" + comentario, cuerpo))
+                .andExpect(status().isUnprocessableContent());
+        mvc.perform(ponerComo(clienteFerreteria, "/api/comentarios/" + new ObjectId(), cuerpo))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void elAutorOUnAdministradorEliminanComentarios() throws Exception {
+        Usuario gloria = clienteAdminFerreteria();
+        Usuario liliana = administrador();
+        String id = id(mvc.perform(crearComo(clienteFerreteria, incidenteInventarios(null)))
+                .andExpect(status().isCreated()).andReturn());
+        String deCamilo = JsonPath.read(mvc.perform(comentarComo(clienteFerreteria, id, "Uno"))
+                .andReturn().getResponse().getContentAsString(), "$.id");
+        String delAgente = JsonPath.read(mvc.perform(comentarComo(agente, id, "Dos"))
+                .andReturn().getResponse().getContentAsString(), "$.id");
+
+        mvc.perform(como(gloria, delete("/api/comentarios/" + deCamilo)))
+                .andExpect(status().isForbidden());
+        mvc.perform(como(otroClienteFerreteria, delete("/api/comentarios/" + deCamilo)))
+                .andExpect(status().isNotFound());
+        mvc.perform(como(clienteFerreteria, delete("/api/comentarios/" + deCamilo)))
+                .andExpect(status().isNoContent());
+        mvc.perform(como(liliana, delete("/api/comentarios/" + delAgente)))
+                .andExpect(status().isNoContent());
+
+        assertThat(template.findAll(ComentarioTicket.class)).isEmpty();
     }
 }
