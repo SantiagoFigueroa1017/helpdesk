@@ -44,3 +44,11 @@ helpdesk:
     vida-refresh-token: 7d
     # Secure en la cookie del refresh token. Los navegadores la aceptan en http://localhost.
     cookie-segura: true
+  # Límite de intentos fallidos en el login (acta 2.4).
+  login:
+    max-fallos-correo: 5
+    max-fallos-ip: 20
+    ventana: 15m
+  # Orígenes del frontend que pueden llamar a la API desde otro origen, separados por comas.
+  cors:
+    origenes: ${CORS_ORIGENES:http://localhost:5173}

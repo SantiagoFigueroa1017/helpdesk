@@ -13,6 +13,7 @@ import co.edu.ufpso.helpdesk.auth.dto.LoginRequest;
 import co.edu.ufpso.helpdesk.auth.dto.SesionResponse;
 import co.edu.ufpso.helpdesk.auth.service.AuthService;
 import co.edu.ufpso.helpdesk.auth.service.SesionEmitida;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 
 /**
@@ -21,7 +22,8 @@ import jakarta.validation.Valid;
  *
  * <ul>
  *   <li>{@code POST /api/auth/login}: correo y contraseña. Responde el access token y los datos del
- *       usuario en el cuerpo, y el refresh token en la cookie.</li>
+ *       usuario en el cuerpo, y el refresh token en la cookie. Tiene límite de intentos fallidos
+ *       por correo y por IP ({@code security.LimiteIntentosLogin}).</li>
  *   <li>{@code POST /api/auth/refresh}: lee la cookie, rota el refresh token y responde igual que el
  *       login. El frontend lo llama al recargar la página y cuando recibe un 401.</li>
  *   <li>{@code POST /api/auth/logout}: borra la sesión y la cookie. Responde 204.</li>
@@ -42,8 +44,9 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<SesionResponse> login(@Valid @RequestBody LoginRequest solicitud) {
-        return responder(servicio.iniciarSesion(solicitud.email(), solicitud.password()));
+    public ResponseEntity<SesionResponse> login(@Valid @RequestBody LoginRequest solicitud,
+            HttpServletRequest request) {
+        return responder(servicio.iniciarSesion(solicitud.email(), solicitud.password(), request.getRemoteAddr()));
     }
 
     @PostMapping("/refresh")

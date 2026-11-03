@@ -18,6 +18,7 @@ import co.edu.ufpso.helpdesk.auth.domain.RefreshToken;
 import co.edu.ufpso.helpdesk.auth.repository.RefreshTokenRepository;
 import co.edu.ufpso.helpdesk.common.error.ApiException;
 import co.edu.ufpso.helpdesk.common.error.CodigoError;
+import co.edu.ufpso.helpdesk.security.LimiteIntentosLogin;
 import co.edu.ufpso.helpdesk.security.PermisosEfectivos;
 import co.edu.ufpso.helpdesk.security.PropiedadesJwt;
 import co.edu.ufpso.helpdesk.security.UsuarioAutenticado;
@@ -50,10 +51,11 @@ public class AuthService {
     private final JwtEncoder jwtEncoder;
     private final PropiedadesJwt propiedades;
     private final Clock reloj;
+    private final LimiteIntentosLogin limite;
 
     public AuthService(UsuarioSesionService usuarios, PermisosEfectivos permisosEfectivos,
             RefreshTokenRepository repositorio, MongoTemplate template, JwtEncoder jwtEncoder,
-            PropiedadesJwt propiedades, Clock reloj) {
+            PropiedadesJwt propiedades, Clock reloj, LimiteIntentosLogin limite) {
         this.usuarios = usuarios;
         this.permisosEfectivos = permisosEfectivos;
         this.repositorio = repositorio;
@@ -61,16 +63,25 @@ public class AuthService {
         this.jwtEncoder = jwtEncoder;
         this.propiedades = propiedades;
         this.reloj = reloj;
+        this.limite = limite;
     }
 
     /**
      * Correo o contraseña incorrectos: 401 {@code CREDENCIALES_INVALIDAS}, con el mismo mensaje en
      * los dos casos. Contraseña correcta pero usuario inactivo o sin roles activos: 403
-     * {@code CUENTA_INACTIVA}.
+     * {@code CUENTA_INACTIVA}. Correo o IP con demasiados fallos recientes: 429
+     * {@code DEMASIADOS_INTENTOS}, sin comprobar la contraseña.
+     *
+     * @param ip dirección de quien intenta entrar, para el límite por IP
      */
-    public SesionEmitida iniciarSesion(String email, String password) {
-        UsuarioSesion usuario = usuarios.verificarCredenciales(email, password)
-                .orElseThrow(() -> new ApiException(CodigoError.CREDENCIALES_INVALIDAS));
+    public SesionEmitida iniciarSesion(String email, String password, String ip) {
+        limite.verificar(email, ip);
+        UsuarioSesion usuario = usuarios.verificarCredenciales(email, password).orElse(null);
+        if (usuario == null) {
+            limite.registrarFallo(email, ip);
+            throw new ApiException(CodigoError.CREDENCIALES_INVALIDAS);
+        }
+        limite.registrarExito(email);
         UsuarioAutenticado autenticado = permisosEfectivos.resolver(usuario)
                 .orElseThrow(() -> new ApiException(CodigoError.CUENTA_INACTIVA));
         return emitir(autenticado);

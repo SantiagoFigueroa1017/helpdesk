@@ -45,6 +45,7 @@ import co.edu.ufpso.helpdesk.common.dominio.AlcanceRol;
 import co.edu.ufpso.helpdesk.common.dominio.Permiso;
 import co.edu.ufpso.helpdesk.roles.domain.Rol;
 import co.edu.ufpso.helpdesk.roles.service.RolSesionService;
+import co.edu.ufpso.helpdesk.security.LimiteIntentosLogin;
 import co.edu.ufpso.helpdesk.security.UsuarioAutenticado;
 import co.edu.ufpso.helpdesk.soporte.ValidadoresDePrueba;
 import co.edu.ufpso.helpdesk.usuarios.domain.Usuario;
@@ -85,6 +86,9 @@ class AuthIntegracionTest {
     @Autowired
     private UsuarioSesionService usuarioSesionService;
 
+    @Autowired
+    private LimiteIntentosLogin limite;
+
     private Rol rol;
     private Usuario usuario;
 
@@ -106,6 +110,7 @@ class AuthIntegracionTest {
 
     @BeforeEach
     void prepararDatos() {
+        limite.limpiar();
         ValidadoresDePrueba.copiar(mongoClient, template, "roles");
         ValidadoresDePrueba.copiar(mongoClient, template, "usuarios");
         ValidadoresDePrueba.copiar(mongoClient, template, "refreshTokens");
@@ -217,6 +222,33 @@ class AuthIntegracionTest {
         assertThat((String) JsonPath.read(r.getResponse().getContentAsString(), "$.codigo"))
                 .isEqualTo("CUENTA_INACTIVA");
         assertThat(sesionesGuardadas()).isZero();
+    }
+
+    @Test
+    void elSextoIntentoTrasCincoFallosResponde429AunqueLaClaveSeaCorrecta() throws Exception {
+        for (int i = 0; i < 5; i++) {
+            assertThat(login(usuario.getEmail(), "otraClave1*").getResponse().getStatus()).isEqualTo(401);
+        }
+
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + usuario.getEmail() + "\",\"password\":\"" + CLAVE + "\"}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists(HttpHeaders.RETRY_AFTER))
+                .andExpect(jsonPath("$.codigo").value("DEMASIADOS_INTENTOS"))
+                .andExpect(jsonPath("$.reintentarEnSegundos").isNumber());
+        assertThat(sesionesGuardadas()).isZero();
+    }
+
+    @Test
+    void unLoginCorrectoAntesDelLimiteReiniciaElConteo() throws Exception {
+        for (int i = 0; i < 4; i++) {
+            login(usuario.getEmail(), "otraClave1*");
+        }
+        assertThat(login(usuario.getEmail(), CLAVE).getResponse().getStatus()).isEqualTo(200);
+        for (int i = 0; i < 4; i++) {
+            login(usuario.getEmail(), "otraClave1*");
+        }
+        assertThat(login(usuario.getEmail(), CLAVE).getResponse().getStatus()).isEqualTo(200);
     }
 
     // ---------- access token y permisos ----------

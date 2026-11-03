@@ -68,6 +68,10 @@ public enum CodigoError {
     REGLA_NEGOCIO(HttpStatus.valueOf(422), "Regla de negocio incumplida",
             "La operación no cumple una regla del sistema."),
 
+    // 429. El login lleva además la cabecera Retry-After (acta 2.4).
+    DEMASIADOS_INTENTOS(HttpStatus.TOO_MANY_REQUESTS, "Demasiados intentos",
+            "Hubo demasiados intentos fallidos de inicio de sesión. Espere unos minutos e intente de nuevo."),
+
     // 500 y 503
     ESQUEMA_RECHAZADO(HttpStatus.INTERNAL_SERVER_ERROR, "Documento rechazado por la base de datos",
             "La base de datos rechazó el documento. Es un error del servidor; reporte el idError."),

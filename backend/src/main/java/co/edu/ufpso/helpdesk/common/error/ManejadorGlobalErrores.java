@@ -87,6 +87,11 @@ public class ManejadorGlobalErrores extends ResponseEntityExceptionHandler {
         log.debug("{} en {}: {}", ex.getCodigo(), request.getRequestURI(), ex.getMessage());
         ProblemDetail problema = crear(ex.getCodigo(), ex.getMessage(), request.getRequestURI());
         ex.getPropiedades().forEach(problema::setProperty);
+        if (ex instanceof DemasiadosIntentosException limite) {
+            return ResponseEntity.status(problema.getStatus())
+                    .header(HttpHeaders.RETRY_AFTER, String.valueOf(limite.getSegundos()))
+                    .body(problema);
+        }
         return responder(problema);
     }
 

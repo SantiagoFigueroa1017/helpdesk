@@ -1,8 +1,10 @@
 package co.edu.ufpso.helpdesk.config;
 
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -13,6 +15,7 @@ import org.springframework.security.web.SecurityFilterChain;
 
 import co.edu.ufpso.helpdesk.security.ConvertidorJwtUsuario;
 import co.edu.ufpso.helpdesk.security.ErroresSeguridad;
+import co.edu.ufpso.helpdesk.security.PropiedadesLimiteLogin;
 
 /**
  * Cadena de filtros de Spring Security (contexto 8.3, acta 2.4).
@@ -23,6 +26,8 @@ import co.edu.ufpso.helpdesk.security.ErroresSeguridad;
  *       {@code security.ConvertidorJwtUsuario} arma el usuario con sus permisos efectivos.</li>
  *   <li>Solo los tres endpoints de autenticación son públicos. Todo lo demás exige token.</li>
  *   <li>{@code @EnableMethodSecurity} activa {@code @PreAuthorize("hasAuthority('...')")}.</li>
+ *   <li>CORS con el {@code CorsConfigurationSource} de {@code CorsConfig}. Va antes de la
+ *       autenticación, así la consulta previa ({@code OPTIONS}) del navegador no pide token.</li>
  * </ul>
  *
  * <p>CSRF va desactivado. La API autentica con la cabecera {@code Authorization}, que el navegador
@@ -32,6 +37,7 @@ import co.edu.ufpso.helpdesk.security.ErroresSeguridad;
  */
 @Configuration
 @EnableMethodSecurity
+@EnableConfigurationProperties(PropiedadesLimiteLogin.class)
 public class SeguridadConfig {
 
     /** Rutas públicas: las atiende {@code auth.controller.AuthController}. */
@@ -41,6 +47,7 @@ public class SeguridadConfig {
     SecurityFilterChain cadenaDeSeguridad(HttpSecurity http, ErroresSeguridad errores,
             ConvertidorJwtUsuario convertidor) throws Exception {
         http
+                .cors(Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
