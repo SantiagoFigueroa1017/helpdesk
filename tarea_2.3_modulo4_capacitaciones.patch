@@ -1,0 +1,906 @@
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/Capacitacion.java b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/Capacitacion.java
+new file mode 100644
+index 0000000..ec324e7
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/Capacitacion.java
+@@ -0,0 +1,175 @@
++package co.edu.ufpso.helpdesk.capacitaciones.domain;
++
++import java.time.Duration;
++import java.time.Instant;
++
++import org.bson.types.ObjectId;
++import org.springframework.data.mongodb.core.mapping.Document;
++import org.springframework.data.mongodb.core.mapping.Field;
++
++import co.edu.ufpso.helpdesk.common.dominio.DocumentoBase;
++import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
++
++/**
++ * Documento de la colección {@code capacitaciones} (HU33 a HU36). Modelo 1.2, sección 10.
++ *
++ * <ul>
++ *   <li>oneOf por {@code tipo}: una MASIVA lleva {@code empresaId} y {@code solicitudId} en null;
++ *       una PERSONALIZADA lleva {@code empresaId}, y {@code solicitudId} solo si nació de una
++ *       solicitud (1.3). Los dos son obligatorios aunque valgan null, por eso llevan
++ *       {@code @Field(write = ALWAYS)}.</li>
++ *   <li>{@code fechaFin} = {@code fechaInicio} + {@code duracionMinutos}. No tiene setter: se
++ *       recalcula al cambiar cualquiera de los dos.</li>
++ *   <li>{@code cuposOcupados} es un contador. Inscribirse (HU37) lo sube en la misma transacción
++ *       que inserta la inscripción, con la condición {@code cuposOcupados < cupo}.</li>
++ *   <li>Lo que compara dos campos ({@code cupo} no menor que {@code cuposOcupados},
++ *       {@code fechaInicio} no anterior a hoy) lo revisa el servicio.</li>
++ * </ul>
++ */
++@Document("capacitaciones")
++public class Capacitacion extends DocumentoBase {
++
++    private String titulo;
++    private TipoCapacitacion tipo;
++    private ModuloErp modulo;
++
++    /** null en las MASIVA. */
++    @Field(write = Field.Write.ALWAYS)
++    private ObjectId empresaId;
++
++    private Instant fechaInicio;
++    private Integer duracionMinutos;
++    private Instant fechaFin;
++    private Integer cupo;
++    private Integer cuposOcupados = 0;
++    private ObjectId instructorId;
++    private EstadoCapacitacion estado = EstadoCapacitacion.PROGRAMADA;
++
++    /** Solicitud que originó una PERSONALIZADA. null en las MASIVA y en las personalizadas sin solicitud. */
++    @Field(write = Field.Write.ALWAYS)
++    private ObjectId solicitudId;
++
++    public Capacitacion() {
++    }
++
++    /**
++     * Comprueba la regla del oneOf del validador. El servicio la revisa antes de guardar para
++     * responder 422 en vez de un 500.
++     */
++    public boolean tipoCoherente() {
++        if (tipo == TipoCapacitacion.MASIVA) {
++            return empresaId == null && solicitudId == null;
++        }
++        return tipo == TipoCapacitacion.PERSONALIZADA && empresaId != null;
++    }
++
++    /** Cupos disponibles que muestra HU34. */
++    public int cuposDisponibles() {
++        return cupo - cuposOcupados;
++    }
++
++    /** "Realizada" (derivada): programada y con {@code fechaFin} ya pasada. */
++    public boolean realizada(Instant ahora) {
++        return estado == EstadoCapacitacion.PROGRAMADA && fechaFin != null && fechaFin.isBefore(ahora);
++    }
++
++    private void recalcularFechaFin() {
++        this.fechaFin = (fechaInicio == null || duracionMinutos == null)
++                ? null
++                : fechaInicio.plus(Duration.ofMinutes(duracionMinutos));
++    }
++
++    public String getTitulo() {
++        return titulo;
++    }
++
++    public void setTitulo(String titulo) {
++        this.titulo = titulo;
++    }
++
++    public TipoCapacitacion getTipo() {
++        return tipo;
++    }
++
++    public void setTipo(TipoCapacitacion tipo) {
++        this.tipo = tipo;
++    }
++
++    public ModuloErp getModulo() {
++        return modulo;
++    }
++
++    public void setModulo(ModuloErp modulo) {
++        this.modulo = modulo;
++    }
++
++    public ObjectId getEmpresaId() {
++        return empresaId;
++    }
++
++    public void setEmpresaId(ObjectId empresaId) {
++        this.empresaId = empresaId;
++    }
++
++    public Instant getFechaInicio() {
++        return fechaInicio;
++    }
++
++    public void setFechaInicio(Instant fechaInicio) {
++        this.fechaInicio = fechaInicio;
++        recalcularFechaFin();
++    }
++
++    public Integer getDuracionMinutos() {
++        return duracionMinutos;
++    }
++
++    public void setDuracionMinutos(Integer duracionMinutos) {
++        this.duracionMinutos = duracionMinutos;
++        recalcularFechaFin();
++    }
++
++    public Instant getFechaFin() {
++        return fechaFin;
++    }
++
++    public Integer getCupo() {
++        return cupo;
++    }
++
++    public void setCupo(Integer cupo) {
++        this.cupo = cupo;
++    }
++
++    public Integer getCuposOcupados() {
++        return cuposOcupados;
++    }
++
++    public void setCuposOcupados(Integer cuposOcupados) {
++        this.cuposOcupados = cuposOcupados;
++    }
++
++    public ObjectId getInstructorId() {
++        return instructorId;
++    }
++
++    public void setInstructorId(ObjectId instructorId) {
++        this.instructorId = instructorId;
++    }
++
++    public EstadoCapacitacion getEstado() {
++        return estado;
++    }
++
++    public void setEstado(EstadoCapacitacion estado) {
++        this.estado = estado;
++    }
++
++    public ObjectId getSolicitudId() {
++        return solicitudId;
++    }
++
++    public void setSolicitudId(ObjectId solicitudId) {
++        this.solicitudId = solicitudId;
++    }
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/EstadoCapacitacion.java b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/EstadoCapacitacion.java
+new file mode 100644
+index 0000000..af5eba8
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/EstadoCapacitacion.java
+@@ -0,0 +1,10 @@
++package co.edu.ufpso.helpdesk.capacitaciones.domain;
++
++/**
++ * Estados guardados de la capacitación. "Realizada" no se guarda: se deriva de que
++ * {@code fechaFin} ya pasó ({@link Capacitacion#realizada}).
++ */
++public enum EstadoCapacitacion {
++    PROGRAMADA,
++    CANCELADA
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/EstadoSolicitud.java b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/EstadoSolicitud.java
+new file mode 100644
+index 0000000..9ca2e4c
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/EstadoSolicitud.java
+@@ -0,0 +1,8 @@
++package co.edu.ufpso.helpdesk.capacitaciones.domain;
++
++/** Estados de una solicitud de capacitación personalizada. Nace PENDIENTE. */
++public enum EstadoSolicitud {
++    PENDIENTE,
++    PROGRAMADA,
++    RECHAZADA
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/Inscripcion.java b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/Inscripcion.java
+new file mode 100644
+index 0000000..722b513
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/Inscripcion.java
+@@ -0,0 +1,103 @@
++package co.edu.ufpso.helpdesk.capacitaciones.domain;
++
++import java.time.Instant;
++
++import org.bson.types.ObjectId;
++import org.springframework.data.mongodb.core.mapping.Document;
++import org.springframework.data.mongodb.core.mapping.Field;
++
++import co.edu.ufpso.helpdesk.common.dominio.DocumentoBase;
++
++/**
++ * Documento de la colección {@code inscripciones} (HU37 a HU40). Modelo 1.2, sección 12.
++ *
++ * <ul>
++ *   <li>Una por usuario y capacitación ({@code ux_inscripciones_capacitacion_usuario}).</li>
++ *   <li>{@code empresaId} es copia del usuario (referencia extendida). La escribe HU37 y no
++ *       cambia, porque un usuario no cambia de empresa.</li>
++ *   <li>oneOf de asistencia: {@code asistio}, {@code marcadoPorId} y {@code fechaMarcado} van los
++ *       tres en null (sin marcar) o los tres con valor. Son obligatorios aunque valgan null
++ *       ({@code @Field(write = ALWAYS)}) y no tienen setters: cambian con
++ *       {@link #marcarAsistencia} y {@link #quitarMarca}.</li>
++ * </ul>
++ */
++@Document("inscripciones")
++public class Inscripcion extends DocumentoBase {
++
++    private ObjectId capacitacionId;
++    private ObjectId usuarioId;
++    private ObjectId empresaId;
++
++    /** null = sin marcar (HU39). */
++    @Field(write = Field.Write.ALWAYS)
++    private Boolean asistio;
++
++    @Field(write = Field.Write.ALWAYS)
++    private ObjectId marcadoPorId;
++
++    @Field(write = Field.Write.ALWAYS)
++    private Instant fechaMarcado;
++
++    public Inscripcion() {
++    }
++
++    /**
++     * HU39: el instructor o el administrador marca si asistió, desde la hora de inicio de la
++     * sesión (eso último lo revisa el servicio).
++     */
++    public void marcarAsistencia(boolean asistio, ObjectId marcadoPorId, Instant fechaMarcado) {
++        this.asistio = asistio;
++        this.marcadoPorId = marcadoPorId;
++        this.fechaMarcado = fechaMarcado;
++    }
++
++    /** Deja la asistencia sin marcar, los tres campos en null. */
++    public void quitarMarca() {
++        this.asistio = null;
++        this.marcadoPorId = null;
++        this.fechaMarcado = null;
++    }
++
++    /** Comprueba la regla del oneOf del validador: los tres en null o los tres con valor. */
++    public boolean marcaCoherente() {
++        boolean sinMarcar = asistio == null && marcadoPorId == null && fechaMarcado == null;
++        boolean marcada = asistio != null && marcadoPorId != null && fechaMarcado != null;
++        return sinMarcar || marcada;
++    }
++
++    public ObjectId getCapacitacionId() {
++        return capacitacionId;
++    }
++
++    public void setCapacitacionId(ObjectId capacitacionId) {
++        this.capacitacionId = capacitacionId;
++    }
++
++    public ObjectId getUsuarioId() {
++        return usuarioId;
++    }
++
++    public void setUsuarioId(ObjectId usuarioId) {
++        this.usuarioId = usuarioId;
++    }
++
++    public ObjectId getEmpresaId() {
++        return empresaId;
++    }
++
++    public void setEmpresaId(ObjectId empresaId) {
++        this.empresaId = empresaId;
++    }
++
++    public Boolean getAsistio() {
++        return asistio;
++    }
++
++    public ObjectId getMarcadoPorId() {
++        return marcadoPorId;
++    }
++
++    public Instant getFechaMarcado() {
++        return fechaMarcado;
++    }
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/SolicitudCapacitacion.java b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/SolicitudCapacitacion.java
+new file mode 100644
+index 0000000..2c1fee5
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/SolicitudCapacitacion.java
+@@ -0,0 +1,152 @@
++package co.edu.ufpso.helpdesk.capacitaciones.domain;
++
++import java.time.Instant;
++
++import org.bson.types.ObjectId;
++import org.springframework.data.mongodb.core.mapping.Document;
++import org.springframework.data.mongodb.core.mapping.Field;
++
++import co.edu.ufpso.helpdesk.common.dominio.DocumentoBase;
++import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
++
++/**
++ * Documento de la colección {@code solicitudesCapacitacion} (CRUD fuera de las 40). Modelo 1.2,
++ * sección 11.
++ *
++ * <p>oneOf por {@code estado}:
++ * <ul>
++ *   <li>PENDIENTE: {@code capacitacionId} y {@code motivoRechazo} en null. Puede conservar
++ *       {@code atendidaPorId} si volvió a pendiente por HU36 v.4.</li>
++ *   <li>PROGRAMADA: {@code capacitacionId} y {@code atendidaPorId} con valor, sin motivo.</li>
++ *   <li>RECHAZADA: {@code motivoRechazo} y {@code atendidaPorId} con valor, sin capacitación.</li>
++ * </ul>
++ * Los tres campos son obligatorios aunque valgan null ({@code @Field(write = ALWAYS)}) y no tienen
++ * setters: cambian con {@link #programar}, {@link #rechazar} y {@link #devolverAPendiente}.
++ * {@code fechaPreferida} es lo contrario: opcional, y no se escribe si es null.
++ */
++@Document("solicitudesCapacitacion")
++public class SolicitudCapacitacion extends DocumentoBase {
++
++    private ObjectId empresaId;
++    private ObjectId solicitanteId;
++    private ModuloErp modulo;
++    private String descripcion;
++    private Integer participantesEstimados;
++    private Instant fechaPreferida;
++    private EstadoSolicitud estado = EstadoSolicitud.PENDIENTE;
++
++    @Field(write = Field.Write.ALWAYS)
++    private ObjectId capacitacionId;
++
++    @Field(write = Field.Write.ALWAYS)
++    private String motivoRechazo;
++
++    @Field(write = Field.Write.ALWAYS)
++    private ObjectId atendidaPorId;
++
++    public SolicitudCapacitacion() {
++    }
++
++    /** HU33: el agente la programa. Va en la misma transacción que crea la capacitación. */
++    public void programar(ObjectId capacitacionId, ObjectId atendidaPorId) {
++        this.estado = EstadoSolicitud.PROGRAMADA;
++        this.capacitacionId = capacitacionId;
++        this.motivoRechazo = null;
++        this.atendidaPorId = atendidaPorId;
++    }
++
++    /** El agente la rechaza con un motivo. */
++    public void rechazar(String motivoRechazo, ObjectId atendidaPorId) {
++        this.estado = EstadoSolicitud.RECHAZADA;
++        this.capacitacionId = null;
++        this.motivoRechazo = motivoRechazo;
++        this.atendidaPorId = atendidaPorId;
++    }
++
++    /**
++     * HU36 v.4: al eliminar la capacitación que la programó, la solicitud vuelve a PENDIENTE sin
++     * capacitación. Conserva {@code atendidaPorId}.
++     */
++    public void devolverAPendiente() {
++        this.estado = EstadoSolicitud.PENDIENTE;
++        this.capacitacionId = null;
++        this.motivoRechazo = null;
++    }
++
++    /** Comprueba la regla del oneOf del validador. */
++    public boolean estadoCoherente() {
++        if (estado == null) {
++            return false;
++        }
++        return switch (estado) {
++            case PENDIENTE -> capacitacionId == null && motivoRechazo == null;
++            case PROGRAMADA -> capacitacionId != null && motivoRechazo == null && atendidaPorId != null;
++            case RECHAZADA -> capacitacionId == null && motivoRechazo != null && !motivoRechazo.isBlank()
++                    && atendidaPorId != null;
++        };
++    }
++
++    public ObjectId getEmpresaId() {
++        return empresaId;
++    }
++
++    public void setEmpresaId(ObjectId empresaId) {
++        this.empresaId = empresaId;
++    }
++
++    public ObjectId getSolicitanteId() {
++        return solicitanteId;
++    }
++
++    public void setSolicitanteId(ObjectId solicitanteId) {
++        this.solicitanteId = solicitanteId;
++    }
++
++    public ModuloErp getModulo() {
++        return modulo;
++    }
++
++    public void setModulo(ModuloErp modulo) {
++        this.modulo = modulo;
++    }
++
++    public String getDescripcion() {
++        return descripcion;
++    }
++
++    public void setDescripcion(String descripcion) {
++        this.descripcion = descripcion;
++    }
++
++    public Integer getParticipantesEstimados() {
++        return participantesEstimados;
++    }
++
++    public void setParticipantesEstimados(Integer participantesEstimados) {
++        this.participantesEstimados = participantesEstimados;
++    }
++
++    public Instant getFechaPreferida() {
++        return fechaPreferida;
++    }
++
++    public void setFechaPreferida(Instant fechaPreferida) {
++        this.fechaPreferida = fechaPreferida;
++    }
++
++    public EstadoSolicitud getEstado() {
++        return estado;
++    }
++
++    public ObjectId getCapacitacionId() {
++        return capacitacionId;
++    }
++
++    public String getMotivoRechazo() {
++        return motivoRechazo;
++    }
++
++    public ObjectId getAtendidaPorId() {
++        return atendidaPorId;
++    }
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/TipoCapacitacion.java b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/TipoCapacitacion.java
+new file mode 100644
+index 0000000..a7aba38
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/domain/TipoCapacitacion.java
+@@ -0,0 +1,10 @@
++package co.edu.ufpso.helpdesk.capacitaciones.domain;
++
++/**
++ * MASIVA: abierta a cualquier usuario de una empresa con soporte, hasta llenar el cupo.
++ * PERSONALIZADA: para una sola empresa, con o sin solicitud previa (contexto 8.4).
++ */
++public enum TipoCapacitacion {
++    MASIVA,
++    PERSONALIZADA
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/repository/CapacitacionRepository.java b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/repository/CapacitacionRepository.java
+new file mode 100644
+index 0000000..70803c5
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/repository/CapacitacionRepository.java
+@@ -0,0 +1,15 @@
++package co.edu.ufpso.helpdesk.capacitaciones.repository;
++
++import org.bson.types.ObjectId;
++import org.springframework.data.mongodb.repository.MongoRepository;
++
++import co.edu.ufpso.helpdesk.capacitaciones.domain.Capacitacion;
++
++/**
++ * Acceso a {@code capacitaciones}. Solo lo usa el servicio de capacitaciones (regla entre
++ * módulos de 2.2). Las consultas (cronograma, personalizadas de una empresa, sesiones de un
++ * instructor) se agregan en 2.8, apoyadas en {@code ix_capacitaciones_fecha_modulo},
++ * {@code ix_capacitaciones_empresa_fecha} e {@code ix_capacitaciones_instructor_fecha}.
++ */
++public interface CapacitacionRepository extends MongoRepository<Capacitacion, ObjectId> {
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/repository/InscripcionRepository.java b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/repository/InscripcionRepository.java
+new file mode 100644
+index 0000000..c49a0f4
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/repository/InscripcionRepository.java
+@@ -0,0 +1,15 @@
++package co.edu.ufpso.helpdesk.capacitaciones.repository;
++
++import org.bson.types.ObjectId;
++import org.springframework.data.mongodb.repository.MongoRepository;
++
++import co.edu.ufpso.helpdesk.capacitaciones.domain.Inscripcion;
++
++/**
++ * Acceso a {@code inscripciones}. Solo lo usa el servicio de capacitaciones (regla entre
++ * módulos de 2.2). Las consultas (inscritos de una sesión, mis inscripciones) se agregan en 2.8,
++ * apoyadas en {@code ux_inscripciones_capacitacion_usuario} e
++ * {@code ix_inscripciones_usuario_fecha}.
++ */
++public interface InscripcionRepository extends MongoRepository<Inscripcion, ObjectId> {
++}
+diff --git a/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/repository/SolicitudCapacitacionRepository.java b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/repository/SolicitudCapacitacionRepository.java
+new file mode 100644
+index 0000000..4a76671
+--- /dev/null
++++ b/backend/src/main/java/co/edu/ufpso/helpdesk/capacitaciones/repository/SolicitudCapacitacionRepository.java
+@@ -0,0 +1,15 @@
++package co.edu.ufpso.helpdesk.capacitaciones.repository;
++
++import org.bson.types.ObjectId;
++import org.springframework.data.mongodb.repository.MongoRepository;
++
++import co.edu.ufpso.helpdesk.capacitaciones.domain.SolicitudCapacitacion;
++
++/**
++ * Acceso a {@code solicitudesCapacitacion}. Solo lo usa el servicio de capacitaciones (regla
++ * entre módulos de 2.2). Las consultas (bandeja del agente, solicitudes de una empresa y límite
++ * del plan) se agregan en 2.8, apoyadas en {@code ix_solicitudes_estado_fecha} e
++ * {@code ix_solicitudes_empresa_fecha}.
++ */
++public interface SolicitudCapacitacionRepository extends MongoRepository<SolicitudCapacitacion, ObjectId> {
++}
+diff --git a/backend/src/test/java/co/edu/ufpso/helpdesk/capacitaciones/repository/CapacitacionPersistenciaTest.java b/backend/src/test/java/co/edu/ufpso/helpdesk/capacitaciones/repository/CapacitacionPersistenciaTest.java
+new file mode 100644
+index 0000000..a216a0b
+--- /dev/null
++++ b/backend/src/test/java/co/edu/ufpso/helpdesk/capacitaciones/repository/CapacitacionPersistenciaTest.java
+@@ -0,0 +1,111 @@
++package co.edu.ufpso.helpdesk.capacitaciones.repository;
++
++import static com.mongodb.client.model.Filters.eq;
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import java.time.Instant;
++import java.util.Date;
++
++import org.bson.Document;
++import org.bson.types.ObjectId;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.data.mongodb.core.MongoTemplate;
++import org.springframework.test.context.ActiveProfiles;
++
++import com.mongodb.client.MongoClient;
++import com.mongodb.client.MongoCollection;
++
++import co.edu.ufpso.helpdesk.capacitaciones.domain.Capacitacion;
++import co.edu.ufpso.helpdesk.capacitaciones.domain.TipoCapacitacion;
++import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
++import co.edu.ufpso.helpdesk.soporte.ValidadoresDePrueba;
++
++/** Guarda y lee capacitaciones contra el validador real de {@code capacitaciones}. */
++@SpringBootTest
++@ActiveProfiles("test")
++class CapacitacionPersistenciaTest {
++
++    private static final Instant AHORA = Instant.parse("2026-11-02T15:30:00Z");
++    private static final Instant INICIO = Instant.parse("2026-11-20T14:00:00Z");
++
++    @Autowired
++    private CapacitacionRepository repositorio;
++
++    @Autowired
++    private MongoTemplate template;
++
++    @Autowired
++    private MongoClient mongoClient;
++
++    private MongoCollection<Document> coleccion;
++
++    @BeforeEach
++    void copiarValidador() {
++        coleccion = ValidadoresDePrueba.copiar(mongoClient, template, "capacitaciones");
++    }
++
++    @Test
++    void guardaUnaMasivaConEmpresaYSolicitudEnNullYCalculaLaFechaFin() {
++        Capacitacion masiva = capacitacion(TipoCapacitacion.MASIVA, null);
++        Capacitacion guardada = repositorio.save(masiva);
++
++        Document crudo = coleccion.find(eq("_id", guardada.getId())).first();
++        assertThat(crudo).doesNotContainKey("_class")
++                .containsEntry("empresaId", null)
++                .containsEntry("solicitudId", null)
++                .containsEntry("cuposOcupados", 0)
++                .containsEntry("estado", "PROGRAMADA");
++        assertThat(crudo.get("fechaFin")).isEqualTo(Date.from(INICIO.plusSeconds(90 * 60)));
++
++        Capacitacion leida = repositorio.findById(guardada.getId()).orElseThrow();
++        assertThat(leida.getFechaFin()).isEqualTo(INICIO.plusSeconds(90 * 60));
++        assertThat(leida.cuposDisponibles()).isEqualTo(30);
++        assertThat(leida.tipoCoherente()).isTrue();
++    }
++
++    @Test
++    void guardaUnaPersonalizadaSinSolicitudPrevia() {
++        Capacitacion personalizada = capacitacion(TipoCapacitacion.PERSONALIZADA, new ObjectId());
++        Capacitacion guardada = repositorio.save(personalizada);
++
++        Document crudo = coleccion.find(eq("_id", guardada.getId())).first();
++        assertThat(crudo.getObjectId("empresaId")).isEqualTo(personalizada.getEmpresaId());
++        assertThat(crudo).containsEntry("solicitudId", null);
++    }
++
++    @Test
++    void elValidadorRechazaUnaMasivaConEmpresa() {
++        Capacitacion masiva = capacitacion(TipoCapacitacion.MASIVA, new ObjectId());
++
++        assertThat(masiva.tipoCoherente()).isFalse();
++        assertThatThrownBy(() -> repositorio.save(masiva)).isInstanceOf(DataIntegrityViolationException.class);
++    }
++
++    @Test
++    void realizadaSeDerivaDeLaFechaFin() {
++        Capacitacion c = capacitacion(TipoCapacitacion.MASIVA, null);
++
++        assertThat(c.realizada(INICIO.plusSeconds(60))).isFalse();
++        assertThat(c.realizada(INICIO.plusSeconds(91 * 60))).isTrue();
++    }
++
++    private static Capacitacion capacitacion(TipoCapacitacion tipo, ObjectId empresaId) {
++        Capacitacion c = new Capacitacion();
++        c.setFechaCreacion(AHORA);
++        c.setFechaActualizacion(AHORA);
++        c.setTitulo("Cierre de caja y arqueo en el POS");
++        c.setTipo(tipo);
++        c.setModulo(ModuloErp.VENTAS_EN_SITIO);
++        c.setEmpresaId(empresaId);
++        c.setFechaInicio(INICIO);
++        c.setDuracionMinutos(90);
++        c.setCupo(30);
++        c.setInstructorId(new ObjectId());
++        return c;
++    }
++}
+diff --git a/backend/src/test/java/co/edu/ufpso/helpdesk/capacitaciones/repository/InscripcionPersistenciaTest.java b/backend/src/test/java/co/edu/ufpso/helpdesk/capacitaciones/repository/InscripcionPersistenciaTest.java
+new file mode 100644
+index 0000000..3a8c3e7
+--- /dev/null
++++ b/backend/src/test/java/co/edu/ufpso/helpdesk/capacitaciones/repository/InscripcionPersistenciaTest.java
+@@ -0,0 +1,94 @@
++package co.edu.ufpso.helpdesk.capacitaciones.repository;
++
++import static com.mongodb.client.model.Filters.eq;
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import java.time.Instant;
++
++import org.bson.Document;
++import org.bson.types.ObjectId;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.data.mongodb.core.MongoTemplate;
++import org.springframework.test.context.ActiveProfiles;
++import org.springframework.test.util.ReflectionTestUtils;
++
++import com.mongodb.client.MongoClient;
++import com.mongodb.client.MongoCollection;
++
++import co.edu.ufpso.helpdesk.capacitaciones.domain.Inscripcion;
++import co.edu.ufpso.helpdesk.soporte.ValidadoresDePrueba;
++
++/** Guarda y lee inscripciones contra el validador real de {@code inscripciones}. */
++@SpringBootTest
++@ActiveProfiles("test")
++class InscripcionPersistenciaTest {
++
++    private static final Instant AHORA = Instant.parse("2026-11-02T15:30:00Z");
++
++    @Autowired
++    private InscripcionRepository repositorio;
++
++    @Autowired
++    private MongoTemplate template;
++
++    @Autowired
++    private MongoClient mongoClient;
++
++    private MongoCollection<Document> coleccion;
++
++    @BeforeEach
++    void copiarValidador() {
++        coleccion = ValidadoresDePrueba.copiar(mongoClient, template, "inscripciones");
++    }
++
++    @Test
++    void guardaUnaInscripcionSinMarcarConLosTresCamposEnNull() {
++        Inscripcion guardada = repositorio.save(inscripcion());
++
++        Document crudo = coleccion.find(eq("_id", guardada.getId())).first();
++        assertThat(crudo).doesNotContainKey("_class")
++                .containsEntry("asistio", null)
++                .containsEntry("marcadoPorId", null)
++                .containsEntry("fechaMarcado", null);
++    }
++
++    @Test
++    void guardaYLeeLaAsistenciaMarcada() {
++        Inscripcion inscripcion = inscripcion();
++        ObjectId instructor = new ObjectId();
++        inscripcion.marcarAsistencia(true, instructor, AHORA);
++        Inscripcion guardada = repositorio.save(inscripcion);
++
++        Inscripcion leida = repositorio.findById(guardada.getId()).orElseThrow();
++        assertThat(leida.getAsistio()).isTrue();
++        assertThat(leida.getMarcadoPorId()).isEqualTo(instructor);
++        assertThat(leida.getFechaMarcado()).isEqualTo(AHORA);
++        assertThat(leida.marcaCoherente()).isTrue();
++    }
++
++    @Test
++    void elValidadorRechazaUnaAsistenciaSinQuienLaMarco() {
++        Inscripcion inscripcion = inscripcion();
++        inscripcion.marcarAsistencia(true, new ObjectId(), AHORA);
++        // Estado imposible desde los métodos del documento; se fuerza para probar el validador.
++        ReflectionTestUtils.setField(inscripcion, "marcadoPorId", null);
++
++        assertThat(inscripcion.marcaCoherente()).isFalse();
++        assertThatThrownBy(() -> repositorio.save(inscripcion)).isInstanceOf(DataIntegrityViolationException.class);
++    }
++
++    private static Inscripcion inscripcion() {
++        Inscripcion i = new Inscripcion();
++        i.setFechaCreacion(AHORA);
++        i.setFechaActualizacion(AHORA);
++        i.setCapacitacionId(new ObjectId());
++        i.setUsuarioId(new ObjectId());
++        i.setEmpresaId(new ObjectId());
++        return i;
++    }
++}
+diff --git a/backend/src/test/java/co/edu/ufpso/helpdesk/capacitaciones/repository/SolicitudCapacitacionPersistenciaTest.java b/backend/src/test/java/co/edu/ufpso/helpdesk/capacitaciones/repository/SolicitudCapacitacionPersistenciaTest.java
+new file mode 100644
+index 0000000..e17a5d8
+--- /dev/null
++++ b/backend/src/test/java/co/edu/ufpso/helpdesk/capacitaciones/repository/SolicitudCapacitacionPersistenciaTest.java
+@@ -0,0 +1,126 @@
++package co.edu.ufpso.helpdesk.capacitaciones.repository;
++
++import static com.mongodb.client.model.Filters.eq;
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.assertj.core.api.Assertions.assertThatThrownBy;
++
++import java.time.Instant;
++
++import org.bson.Document;
++import org.bson.types.ObjectId;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.data.mongodb.core.MongoTemplate;
++import org.springframework.test.context.ActiveProfiles;
++import org.springframework.test.util.ReflectionTestUtils;
++
++import com.mongodb.client.MongoClient;
++import com.mongodb.client.MongoCollection;
++
++import co.edu.ufpso.helpdesk.capacitaciones.domain.EstadoSolicitud;
++import co.edu.ufpso.helpdesk.capacitaciones.domain.SolicitudCapacitacion;
++import co.edu.ufpso.helpdesk.common.dominio.ModuloErp;
++import co.edu.ufpso.helpdesk.soporte.ValidadoresDePrueba;
++
++/** Guarda y lee solicitudes contra el validador real de {@code solicitudesCapacitacion}. */
++@SpringBootTest
++@ActiveProfiles("test")
++class SolicitudCapacitacionPersistenciaTest {
++
++    private static final Instant AHORA = Instant.parse("2026-11-02T15:30:00Z");
++
++    @Autowired
++    private SolicitudCapacitacionRepository repositorio;
++
++    @Autowired
++    private MongoTemplate template;
++
++    @Autowired
++    private MongoClient mongoClient;
++
++    private MongoCollection<Document> coleccion;
++
++    @BeforeEach
++    void copiarValidador() {
++        coleccion = ValidadoresDePrueba.copiar(mongoClient, template, "solicitudesCapacitacion");
++    }
++
++    @Test
++    void guardaUnaPendienteSinFechaPreferida() {
++        SolicitudCapacitacion guardada = repositorio.save(solicitud());
++
++        Document crudo = coleccion.find(eq("_id", guardada.getId())).first();
++        assertThat(crudo).doesNotContainKey("_class")
++                .doesNotContainKey("fechaPreferida")
++                .containsEntry("estado", "PENDIENTE")
++                .containsEntry("capacitacionId", null)
++                .containsEntry("motivoRechazo", null)
++                .containsEntry("atendidaPorId", null);
++    }
++
++    @Test
++    void guardaUnaProgramada() {
++        SolicitudCapacitacion solicitud = solicitud();
++        solicitud.setFechaPreferida(Instant.parse("2026-11-25T13:00:00Z"));
++        solicitud.programar(new ObjectId(), new ObjectId());
++        SolicitudCapacitacion guardada = repositorio.save(solicitud);
++
++        SolicitudCapacitacion leida = repositorio.findById(guardada.getId()).orElseThrow();
++        assertThat(leida.getEstado()).isEqualTo(EstadoSolicitud.PROGRAMADA);
++        assertThat(leida.getCapacitacionId()).isEqualTo(solicitud.getCapacitacionId());
++        assertThat(leida.getFechaPreferida()).isEqualTo(solicitud.getFechaPreferida());
++        assertThat(leida.estadoCoherente()).isTrue();
++    }
++
++    @Test
++    void guardaUnaRechazadaConSuMotivo() {
++        SolicitudCapacitacion solicitud = solicitud();
++        solicitud.rechazar("El plan no incluye más capacitaciones en esta vigencia.", new ObjectId());
++
++        SolicitudCapacitacion guardada = repositorio.save(solicitud);
++
++        Document crudo = coleccion.find(eq("_id", guardada.getId())).first();
++        assertThat(crudo).containsEntry("estado", "RECHAZADA").containsEntry("capacitacionId", null);
++    }
++
++    @Test
++    void vuelveAPendienteConservandoQuienLaAtendio() {
++        ObjectId agente = new ObjectId();
++        SolicitudCapacitacion solicitud = solicitud();
++        solicitud.programar(new ObjectId(), agente);
++        solicitud.devolverAPendiente();
++
++        SolicitudCapacitacion guardada = repositorio.save(solicitud);
++
++        Document crudo = coleccion.find(eq("_id", guardada.getId())).first();
++        assertThat(crudo).containsEntry("estado", "PENDIENTE")
++                .containsEntry("capacitacionId", null)
++                .containsEntry("atendidaPorId", agente);
++    }
++
++    @Test
++    void elValidadorRechazaUnaProgramadaSinCapacitacion() {
++        SolicitudCapacitacion solicitud = solicitud();
++        solicitud.programar(new ObjectId(), new ObjectId());
++        // Estado imposible desde los métodos del documento; se fuerza para probar el validador.
++        ReflectionTestUtils.setField(solicitud, "capacitacionId", null);
++
++        assertThat(solicitud.estadoCoherente()).isFalse();
++        assertThatThrownBy(() -> repositorio.save(solicitud)).isInstanceOf(DataIntegrityViolationException.class);
++    }
++
++    private static SolicitudCapacitacion solicitud() {
++        SolicitudCapacitacion s = new SolicitudCapacitacion();
++        s.setFechaCreacion(AHORA);
++        s.setFechaActualizacion(AHORA);
++        s.setEmpresaId(new ObjectId());
++        s.setSolicitanteId(new ObjectId());
++        s.setModulo(ModuloErp.INVENTARIOS);
++        s.setDescripcion("El equipo de bodega necesita repasar los ajustes de inventario y los traslados.");
++        s.setParticipantesEstimados(8);
++        return s;
++    }
++}
