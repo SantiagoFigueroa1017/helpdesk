@@ -122,6 +122,16 @@ public class MembresiaService {
         return repositorio.findByEmpresaId(empresaId).flatMap(m -> planes.consultar(m.getPlanId()));
     }
 
+    /**
+     * Para el módulo de tickets (HU21): módulos contratados y plan de la empresa. Vacío si la empresa
+     * no tiene membresía o su plan ya no existe. No revisa el soporte: eso lo hace
+     * {@link SoporteService} antes de llamar aquí.
+     */
+    public Optional<ContratoEmpresa> contratoDeEmpresa(ObjectId empresaId) {
+        return repositorio.findByEmpresaId(empresaId).flatMap(m -> planes.consultar(m.getPlanId())
+                .map(plan -> new ContratoEmpresa(EnumSet.copyOf(m.getModulosContratados()), plan)));
+    }
+
     // ------------------------------------------------------------------
     // HU13 · Crear
     // ------------------------------------------------------------------
