@@ -86,6 +86,22 @@ Se corren después de cargar los datos de prueba, en la misma consola. Ninguno m
 | A8 | ¿Qué empresas suspendidas dejaron tickets abiertos? | membresias | $match, $lookup, $project |
 | A9 | ¿Bajan los incidentes después de asistir a la capacitación del módulo? | inscripciones | $match, $lookup, $project, $group, $sort |
 
+Desde la tarea 2.9 los nueve también se piden a la API, con el permiso `REPORTES_VER`:
+
+| Reporte | Endpoint | Parámetros |
+|---|---|---|
+| A1 | `GET /api/reportes/incidentes-por-modulo` | `desde`, `hasta` (días, opcionales) |
+| A2 | `GET /api/reportes/membresias-activas-por-plan` | |
+| A3 | `GET /api/reportes/carga-por-agente` | |
+| A4 | `GET /api/reportes/plan-y-tickets-por-empresa` | `pagina`, `tamano` |
+| A5 | `GET /api/reportes/recaudo-mensual` | `desde`, `hasta` (meses `AAAA-MM`; por defecto los últimos 12), `empresaId` |
+| A6 | `GET /api/reportes/asistencia-por-capacitacion` | `desde`, `hasta`, `modulo`, `pagina`, `tamano` |
+| A7 | `GET /api/reportes/articulos-por-modulo` | |
+| A8 | `GET /api/reportes/suspendidas-con-tickets-abiertos` | |
+| A9 | `GET /api/reportes/impacto-capacitaciones` | `dias` (30 a 180, por defecto 90) |
+
+Los pipelines del backend están en `backend/.../reportes/service/PipelinesReportes.java`, escritos igual que los scripts.
+
 Este README se completa en la tarea 4.1 con el despliegue del backend y el frontend.
 
 ## Secretos
