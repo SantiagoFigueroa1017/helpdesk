@@ -24,4 +24,13 @@ public interface UsuarioRepository extends MongoRepository<Usuario, ObjectId> {
 
     /** HU04: usuarios de la empresa. Usa el prefijo de {@code ix_usuarios_empresa_nombre}. */
     long countByEmpresaId(ObjectId empresaId);
+
+    /** HU05: correo único. Usa {@code ux_usuarios_email}; llega ya en minúsculas. */
+    boolean existsByEmail(String email);
+
+    /** HU07: correo único entre los demás usuarios. Usa {@code ux_usuarios_email}. */
+    boolean existsByEmailAndIdNot(String email, ObjectId id);
+
+    /** HU05 y HU07: usuarios activos de la empresa, para {@code limites.maxUsuarios}. Usa {@code ix_usuarios_empresa_nombre}. */
+    long countByEmpresaIdAndActivoTrue(ObjectId empresaId);
 }

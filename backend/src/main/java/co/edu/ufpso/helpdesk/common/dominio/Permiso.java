@@ -1,5 +1,8 @@
 package co.edu.ufpso.helpdesk.common.dominio;
 
+import java.util.EnumSet;
+import java.util.Set;
+
 /**
  * Catálogo fijo de los 49 permisos (modelo 1.2, sección "Catálogo de permisos"; contexto 8.4).
  *
@@ -67,6 +70,28 @@ public enum Permiso {
     INSCRIPCIONES_VER("Inscripciones", "Ver las listas de inscritos"),
     ASISTENCIA_MARCAR("Inscripciones", "Marcar asistencia"),
     REPORTES_VER("Reportes", "Ver los reportes de analítica");
+
+    /**
+     * Permisos de autoservicio (decidido en 2.5): solo actúan sobre los datos del propio usuario
+     * (sus tickets como solicitante, editarlos mientras nadie los atiende, inscribirse él mismo),
+     * así que darlos no permite ver ni tocar datos de nadie más. La anti-escalada al asignar roles a
+     * usuarios no los exige al actor: un CLIENTE_ADMIN puede asignar el rol CLIENTE aunque él no
+     * tenga {@code TICKETS_VER_PROPIOS} ni {@code INSCRIPCIONES_PROPIAS}.
+     */
+    public static final Set<Permiso> AUTOSERVICIO = Set.copyOf(EnumSet.of(
+            TICKETS_VER_PROPIOS, TICKETS_EDITAR_PROPIOS, INSCRIPCIONES_PROPIAS));
+
+    /**
+     * Los permisos de {@code permisos} que un actor con {@code delActor} no podría asignar: los que
+     * no tiene, sin contar los de autoservicio. Vacío si puede asignarlos todos.
+     */
+    public static Set<Permiso> faltantesParaAsignar(Set<Permiso> permisos, Set<Permiso> delActor) {
+        Set<Permiso> faltantes = EnumSet.noneOf(Permiso.class);
+        faltantes.addAll(permisos);
+        faltantes.removeAll(delActor);
+        faltantes.removeAll(AUTOSERVICIO);
+        return faltantes;
+    }
 
     private final String grupo;
     private final String descripcion;

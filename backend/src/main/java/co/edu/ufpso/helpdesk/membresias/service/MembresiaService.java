@@ -6,6 +6,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.bson.types.ObjectId;
@@ -111,6 +112,14 @@ public class MembresiaService {
             throw noExiste();
         }
         return aRespuesta(membresia, ahora());
+    }
+
+    /**
+     * Para el módulo de usuarios (HU05, HU07): el plan de la membresía de la empresa, con sus
+     * límites. Vacío si la empresa no tiene membresía (o su plan ya no existe).
+     */
+    public Optional<PlanResponse> planDeEmpresa(ObjectId empresaId) {
+        return repositorio.findByEmpresaId(empresaId).flatMap(m -> planes.consultar(m.getPlanId()));
     }
 
     // ------------------------------------------------------------------

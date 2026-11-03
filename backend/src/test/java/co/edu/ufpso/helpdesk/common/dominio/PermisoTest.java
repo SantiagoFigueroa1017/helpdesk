@@ -26,4 +26,21 @@ class PermisoTest {
                 .collect(Collectors.toSet());
         assertThat(descripciones).hasSize(Permiso.values().length);
     }
+
+    @Test
+    void losPermisosDeAutoservicioNoSeExigenAlAsignar() {
+        // Permisos por defecto de CLIENTE_ADMIN (semilla) frente al rol CLIENTE.
+        Set<Permiso> clienteAdmin = Set.of(Permiso.TICKETS_CREAR, Permiso.TICKETS_VER, Permiso.TICKETS_EDITAR_PROPIOS,
+                Permiso.ARTICULOS_VER, Permiso.CAPACITACIONES_VER, Permiso.USUARIOS_CREAR);
+        Set<Permiso> cliente = Set.of(Permiso.TICKETS_CREAR, Permiso.TICKETS_VER_PROPIOS,
+                Permiso.TICKETS_EDITAR_PROPIOS, Permiso.ARTICULOS_VER, Permiso.CAPACITACIONES_VER,
+                Permiso.INSCRIPCIONES_PROPIAS);
+        assertThat(Permiso.faltantesParaAsignar(cliente, clienteAdmin)).isEmpty();
+
+        // Un permiso que no es de autoservicio sí se exige.
+        assertThat(Permiso.faltantesParaAsignar(Set.of(Permiso.TICKETS_ELIMINAR, Permiso.TICKETS_VER_PROPIOS),
+                clienteAdmin)).containsExactly(Permiso.TICKETS_ELIMINAR);
+        assertThat(Permiso.AUTOSERVICIO).containsExactlyInAnyOrder(Permiso.TICKETS_VER_PROPIOS,
+                Permiso.TICKETS_EDITAR_PROPIOS, Permiso.INSCRIPCIONES_PROPIAS);
+    }
 }

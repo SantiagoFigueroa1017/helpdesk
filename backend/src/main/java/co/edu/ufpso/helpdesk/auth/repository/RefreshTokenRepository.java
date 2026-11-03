@@ -15,4 +15,7 @@ public interface RefreshTokenRepository extends MongoRepository<RefreshToken, Ob
 
     /** Logout. Usa {@code ux_refresh_tokenHash}. Devuelve cuántos documentos borró (0 o 1). */
     long deleteByTokenHash(String tokenHash);
+
+    /** HU07 y HU08: cierra todas las sesiones del usuario. Usa {@code ix_refresh_usuario}. */
+    long deleteByUsuarioId(ObjectId usuarioId);
 }

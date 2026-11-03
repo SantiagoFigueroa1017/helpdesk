@@ -30,4 +30,7 @@ public interface MembresiaRepository extends MongoRepository<Membresia, ObjectId
      */
     @Query(value = "{ 'empresaId': ?0 }", fields = "{ 'estado': 1, 'fechaVencimiento': 1 }")
     Optional<Membresia> buscarParaSoporte(ObjectId empresaId);
+
+    /** HU05 y HU07: plan de la empresa para {@code limites.maxUsuarios}. Usa {@code ux_membresias_empresa}. */
+    Optional<Membresia> findByEmpresaId(ObjectId empresaId);
 }

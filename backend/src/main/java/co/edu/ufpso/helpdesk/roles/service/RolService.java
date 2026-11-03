@@ -33,6 +33,7 @@ import co.edu.ufpso.helpdesk.roles.domain.Rol;
 import co.edu.ufpso.helpdesk.roles.dto.ActualizarRolRequest;
 import co.edu.ufpso.helpdesk.roles.dto.CrearRolRequest;
 import co.edu.ufpso.helpdesk.roles.dto.PermisoResponse;
+import co.edu.ufpso.helpdesk.roles.dto.RolAsignableResponse;
 import co.edu.ufpso.helpdesk.roles.dto.RolResponse;
 import co.edu.ufpso.helpdesk.roles.repository.RolRepository;
 import co.edu.ufpso.helpdesk.security.UsuarioAutenticado;
@@ -119,6 +120,22 @@ public class RolService {
     public RolResponse obtener(ObjectId id) {
         Rol rol = buscar(id);
         return aRespuesta(rol, usuariosPorRol.contarConRol(id));
+    }
+
+    /**
+     * HU05 y HU07: roles activos que el actor puede asignar, por nombre. Mismo criterio de la
+     * anti-escalada de usuarios: permisos contenidos en los suyos, sin contar los de autoservicio
+     * ({@link Permiso#AUTOSERVICIO}), y, si su alcance es EMPRESA, solo roles
+     * EMPRESA (el parámetro {@code alcance} se ignora). La colección tiene pocos documentos, así que
+     * se filtran en memoria y no se pagina.
+     */
+    public List<RolAsignableResponse> asignables(AlcanceRol alcance, UsuarioAutenticado actor) {
+        AlcanceRol filtro = actor.esDeEmpresa() ? AlcanceRol.EMPRESA : alcance;
+        return template.find(filtro(filtro, true).with(Sort.by("nombre")), Rol.class).stream()
+                .filter(r -> Permiso.faltantesParaAsignar(Set.copyOf(r.getPermisos()), actor.permisos()).isEmpty())
+                .map(r -> new RolAsignableResponse(r.getId().toHexString(), r.getNombre(), r.getDescripcion(),
+                        r.getAlcance().name(), enOrden(Set.copyOf(r.getPermisos())).stream().map(Enum::name).toList()))
+                .toList();
     }
 
     // ------------------------------------------------------------------

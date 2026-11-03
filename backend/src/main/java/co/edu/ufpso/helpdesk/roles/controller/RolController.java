@@ -23,6 +23,7 @@ import co.edu.ufpso.helpdesk.common.paginacion.Pagina;
 import co.edu.ufpso.helpdesk.roles.dto.ActualizarRolRequest;
 import co.edu.ufpso.helpdesk.roles.dto.CrearRolRequest;
 import co.edu.ufpso.helpdesk.roles.dto.PermisoResponse;
+import co.edu.ufpso.helpdesk.roles.dto.RolAsignableResponse;
 import co.edu.ufpso.helpdesk.roles.dto.RolResponse;
 import co.edu.ufpso.helpdesk.roles.service.RolService;
 import co.edu.ufpso.helpdesk.security.UsuarioAutenticado;
@@ -55,6 +56,18 @@ public class RolController {
     public Pagina<RolResponse> listar(@RequestParam(required = false) AlcanceRol alcance,
             @RequestParam(required = false) Boolean activo, Pageable pageable) {
         return servicio.listar(alcance, activo, pageable);
+    }
+
+    /**
+     * HU05 y HU07: roles que el usuario puede asignar al crear o editar usuarios. Existe porque el
+     * CLIENTE_ADMIN asigna roles y no tiene {@code ROLES_VER}. {@code ?alcance=EMPRESA|GLOBAL}
+     * solo aplica a usuarios de alcance GLOBAL.
+     */
+    @GetMapping("/roles/asignables")
+    @PreAuthorize("hasAnyAuthority('USUARIOS_CREAR','USUARIOS_EDITAR')")
+    public List<RolAsignableResponse> asignables(@RequestParam(required = false) AlcanceRol alcance,
+            @AuthenticationPrincipal UsuarioAutenticado actor) {
+        return servicio.asignables(alcance, actor);
     }
 
     @GetMapping("/roles/{id}")
