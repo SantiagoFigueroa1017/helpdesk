@@ -52,3 +52,15 @@ helpdesk:
   # Orígenes del frontend que pueden llamar a la API desde otro origen, separados por comas.
   cors:
     origenes: ${CORS_ORIGENES:http://localhost:5173}
+  # Embeddings de la base de conocimientos (tarea 2.7). GEMINI_API_KEY va en el archivo .env.
+  # Sin clave el backend arranca igual: los artículos quedan con el vector pendiente y la búsqueda
+  # por significado responde con la de texto.
+  gemini:
+    clave: ${GEMINI_API_KEY:}
+    url-base: https://generativelanguage.googleapis.com/v1beta
+    tiempo-conexion: 5s
+    tiempo-respuesta: 10s
+    # Tarea programada que genera los vectores pendientes, en lotes para no pasar de la cuota gratuita.
+    regeneracion-activa: true
+    intervalo-regeneracion: PT10M
+    lote-regeneracion: 10

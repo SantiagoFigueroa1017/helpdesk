@@ -1,8 +1,9 @@
 // =====================================================================
 // 00_indices.js · Índices de la base helpdesk (tarea 1.4)
 //
-// Crea los 32 índices normales del modelo (únicos, compuestos, multikey,
-// de texto y TTL). El índice vectorial va aparte en
+// Crea los 33 índices normales del modelo (únicos, compuestos, multikey,
+// de texto y TTL): los 32 de 1.4 y ix_articulos_modulo_fecha, agregado
+// en 2.7 para el listado de artículos. El índice vectorial va aparte en
 // 01_indice_vectorial_atlas.js porque solo existe en Atlas.
 //
 // Cómo se usa: pegar el archivo completo en la consola mongosh de Compass,
@@ -73,7 +74,8 @@ const INDICES = {
       },
       atiende: "HU30 búsqueda por palabras (pesos decididos en 1.3)"
     },
-    { name: "ix_articulos_ticketIds", key: { ticketIds: 1 }, atiende: "HU24 $pull en cascada, A7" }
+    { name: "ix_articulos_ticketIds", key: { ticketIds: 1 }, atiende: "HU24 $pull en cascada, A7" },
+    { name: "ix_articulos_modulo_fecha", key: { modulo: 1, fechaCreacion: -1 }, atiende: "HU30 listado por módulo y fecha (agregado en 2.7)" }
   ],
   capacitaciones: [
     { name: "ix_capacitaciones_fecha_modulo", key: { fechaInicio: 1, modulo: 1 }, atiende: "HU34 cronograma" },

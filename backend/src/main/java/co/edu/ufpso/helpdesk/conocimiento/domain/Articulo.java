@@ -30,6 +30,9 @@ public class Articulo extends DocumentoBase {
     /** Dimensiones del vector (Gemini {@code gemini-embedding-001} con {@code output_dimensionality} 768). */
     public static final int DIMENSIONES = 768;
 
+    /** Tope de {@code ticketIds} en el validador (1.3). */
+    public static final int MAX_TICKETS = 500;
+
     private String titulo;
     private String contenido;
     private ModuloErp modulo;
@@ -55,7 +58,8 @@ public class Articulo extends DocumentoBase {
 
     /**
      * Deja el vector pendiente (los dos campos en null). Se usa al crear, cuando Gemini falla y
-     * cuando cambian el título o el contenido (HU31). La tarea programada de 2.7 lo reintenta.
+     * cuando cambian el título, las etiquetas o el contenido (HU31) y Gemini no responde. La tarea
+     * programada {@code RegeneracionEmbeddings} lo reintenta.
      */
     public void marcarEmbeddingPendiente() {
         this.embedding = null;

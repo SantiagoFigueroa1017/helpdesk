@@ -11,3 +11,8 @@ spring:
 helpdesk:
   jwt:
     secreto: evWQxEq/XTs3zPWacy3VjEFC/I4tQ/J3Q5SvjxlIyBA=
+
+  # Las pruebas nunca llaman a Gemini: usan un proveedor falso y no corre la tarea programada.
+  gemini:
+    clave: ""
+    regeneracion-activa: false
