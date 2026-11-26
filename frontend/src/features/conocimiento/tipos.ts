@@ -14,7 +14,8 @@ export type ArticuloResumen = {
   fechaActualizacion: string
 }
 
-export type Articulo = ArticuloResumen & { contenido: string; autorId: string; ticketIds: string[] }
+/** ticketIds solo llega para el personal (alcance GLOBAL con TICKETS_VER); para los demás es null (acta 2.7). */
+export type Articulo = ArticuloResumen & { contenido: string; autorId: string; ticketIds: string[] | null }
 
 export type ResultadoBusqueda = {
   origen: 'TEXTO' | 'SEMANTICA'

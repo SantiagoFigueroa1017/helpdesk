@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 
 import { useMembresia } from '@/api/catalogos'
 import { api, type Pagina } from '@/api/cliente'
@@ -33,7 +33,16 @@ export function PaginaTickets() {
   const { usuario, puede, esPersonal } = usePermisos()
   const [pagina, setPagina] = useState(0)
   const [ahora] = useState(() => Date.now())
-  const [f, setF] = useState({ estado: '', modulo: '', tipo: '', orden: 'fechaCreacion,desc', sinAsignar: false, mios: false })
+  // Filtros iniciales desde la dirección, para los accesos del inicio (/tickets?mios=1&estado=EN_PROCESO).
+  const [inicial] = useSearchParams()
+  const [f, setF] = useState(() => ({
+    estado: (ESTADOS_TICKET.find((e) => e === inicial.get('estado')) ?? '') as string,
+    modulo: '',
+    tipo: '',
+    orden: 'fechaCreacion,desc',
+    sinAsignar: inicial.get('sinAsignar') === '1',
+    mios: inicial.get('mios') === '1',
+  }))
   const filtrar = (cambio: Partial<typeof f>) => {
     setF((v) => ({ ...v, ...cambio }))
     setPagina(0)

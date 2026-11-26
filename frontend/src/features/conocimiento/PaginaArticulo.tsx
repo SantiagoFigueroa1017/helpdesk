@@ -12,7 +12,7 @@ import { COLOR_MODULO, ETIQUETA_MODULO, formato } from '@/lib/dominio'
 import { FormularioArticulo } from './FormularioArticulo'
 import type { Articulo } from './tipos'
 
-/** Un artículo con su contenido y los tickets que resolvió (HU16 y HU17). */
+/** Un artículo con su contenido y los tickets que resolvió (HU30 a HU32). */
 export function PaginaArticulo() {
   const { id = '' } = useParams()
   const { puede } = usePermisos()
@@ -54,6 +54,8 @@ export function PaginaArticulo() {
   if (q.isError) return <div className="flex flex-col gap-4">{volver}<Aviso tono="peligro">{mensajeDeError(q.error)}</Aviso></div>
 
   const a = q.data
+  // ticketIds llega null para los usuarios de empresa (acta 2.7): ellos solo ven el conteo.
+  const ticketIds = a.ticketIds ?? []
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -91,9 +93,9 @@ export function PaginaArticulo() {
         </Tarjeta>
 
         <Tarjeta titulo="Tickets resueltos" descripcion={`${a.ticketsVinculados} ${a.ticketsVinculados === 1 ? 'ticket' : 'tickets'} con esta solución.`}>
-          {puede('TICKETS_VER') && a.ticketIds.length > 0 && (
+          {ticketIds.length > 0 && (
             <ul className="flex flex-col gap-1.5 text-sm">
-              {a.ticketIds.map((t) => (
+              {ticketIds.map((t) => (
                 <li key={t} className="flex items-center justify-between gap-2">
                   <Link to={`/tickets/${t}`} className="truncate font-mono text-xs text-acento hover:underline">{t}</Link>
                   {puede('ARTICULOS_EDITAR') && (
@@ -110,7 +112,7 @@ export function PaginaArticulo() {
               ))}
             </ul>
           )}
-          {puede('ARTICULOS_EDITAR') && (
+          {puede('ARTICULOS_EDITAR') && a.ticketIds !== null && (
             <form
               className="mt-4 flex flex-col gap-2"
               onSubmit={(e) => {
@@ -119,7 +121,7 @@ export function PaginaArticulo() {
               }}
             >
               <CampoTexto etiqueta="Vincular ticket" placeholder="Id del ticket" value={ticketId} onChange={(e) => setTicketId(e.target.value)}
-                error={vincular.isError ? mensajeDeError(vincular.error) : undefined} ayuda="Copia el id desde la dirección del ticket." />
+                error={vincular.isError ? mensajeDeError(vincular.error) : undefined} ayuda="También puedes vincularlo desde el detalle del ticket." />
               <Boton type="submit" variante="secundario" tamano="sm" icono={<Link2 aria-hidden className="size-4" />} cargando={vincular.isPending}>
                 Vincular
               </Boton>

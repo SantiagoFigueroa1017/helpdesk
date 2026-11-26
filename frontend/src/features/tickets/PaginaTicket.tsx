@@ -19,6 +19,7 @@ import {
   Tarjeta,
 } from '@/components/ui'
 import { usePermisos } from '@/features/auth/usePermisos'
+import { SolucionTicket } from '@/features/conocimiento/SolucionTicket'
 import {
   COLOR_MODULO,
   ESTADO_TICKET,
@@ -180,6 +181,7 @@ export function PaginaTicket() {
               </dl>
             )}
           </Tarjeta>
+          <SolucionTicket ticket={t} />
           <Comentarios ticketId={t.id} abierto={abierto} />
         </div>
 

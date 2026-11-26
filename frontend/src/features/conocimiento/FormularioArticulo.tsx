@@ -2,22 +2,43 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/api/cliente'
 import { AreaTexto, CampoTexto, DialogoFormulario, Selector } from '@/components/ui'
-import { opcionesModulo } from '@/lib/dominio'
+import { opcionesModulo, type ModuloErp, type Visibilidad } from '@/lib/dominio'
 import { useFormulario } from '@/lib/formulario'
 
 import type { Articulo } from './tipos'
 
-/** Crear o editar un artículo (HU16). Las etiquetas se escriben separadas por comas. */
-export function FormularioArticulo({ articulo, onCerrar, onGuardado }: { articulo?: Articulo; onCerrar: () => void; onGuardado: (a: Articulo) => void }) {
+/** Valores iniciales de un artículo nuevo, por ejemplo al documentar la solución de un ticket. */
+export type ArticuloInicial = {
+  titulo?: string
+  contenido?: string
+  modulo?: ModuloErp
+  visibilidad?: Visibilidad
+  /** Tickets que quedan vinculados desde que se crea el artículo (HU29). */
+  ticketIds?: string[]
+}
+
+/** Crear (HU29) o editar (HU31) un artículo. Las etiquetas se escriben separadas por comas. */
+export function FormularioArticulo({
+  articulo,
+  inicial,
+  onCerrar,
+  onGuardado,
+}: {
+  articulo?: Articulo
+  inicial?: ArticuloInicial
+  onCerrar: () => void
+  onGuardado: (a: Articulo) => void
+}) {
   const cliente = useQueryClient()
   const form = useFormulario({
-    titulo: articulo?.titulo ?? '',
-    contenido: articulo?.contenido ?? '',
-    modulo: (articulo?.modulo as string) ?? '',
+    titulo: articulo?.titulo ?? inicial?.titulo ?? '',
+    contenido: articulo?.contenido ?? inicial?.contenido ?? '',
+    modulo: (articulo?.modulo as string) ?? inicial?.modulo ?? '',
     etiquetas: articulo?.etiquetas.join(', ') ?? '',
-    visibilidad: (articulo?.visibilidad as string) ?? 'PUBLICO',
+    visibilidad: (articulo?.visibilidad as string) ?? inicial?.visibilidad ?? 'PUBLICO',
   })
   const v = form.valores
+  const vinculados = articulo ? (articulo.ticketIds ?? []) : (inicial?.ticketIds ?? [])
 
   const guardar = useMutation({
     mutationFn: () =>
@@ -29,7 +50,7 @@ export function FormularioArticulo({ articulo, onCerrar, onGuardado }: { articul
           modulo: v.modulo || null,
           etiquetas: v.etiquetas.split(',').map((e) => e.trim()).filter(Boolean),
           visibilidad: v.visibilidad,
-          ticketIds: articulo?.ticketIds ?? [],
+          ticketIds: vinculados,
         },
       }),
     onSuccess: (a) => {
@@ -44,6 +65,7 @@ export function FormularioArticulo({ articulo, onCerrar, onGuardado }: { articul
       abierto
       onCerrar={onCerrar}
       titulo={articulo ? 'Editar artículo' : 'Nuevo artículo'}
+      descripcion={!articulo && vinculados.length > 0 ? 'El artículo quedará vinculado al ticket como su solución.' : undefined}
       onEnviar={() => {
         form.limpiar()
         guardar.mutate(undefined)

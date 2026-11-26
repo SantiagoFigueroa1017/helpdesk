@@ -1,10 +1,10 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { ArrowRight } from 'lucide-react'
 import { Link } from 'react-router'
 
 import { api, type Pagina } from '@/api/cliente'
 import { Aviso, Insignia, Tarjeta } from '@/components/ui'
-import { tieneAlguno } from '@/features/auth/permisos'
+import { tieneAlguno, type Permiso, type UsuarioSesion } from '@/features/auth/permisos'
 import { usePermisos } from '@/features/auth/usePermisos'
 import { MENU } from '@/app/navegacion'
 import { ESTADO_MEMBRESIA, ETIQUETA_MODULO, formato, type EstadoMembresia, type ModuloErp } from '@/lib/dominio'
@@ -59,6 +59,8 @@ export function PaginaInicio() {
       </div>
 
       {!esPersonal && puede('MEMBRESIAS_VER') && <EstadoSoporte />}
+
+      <Pendientes usuario={usuario} />
 
       <section aria-labelledby="accesos">
         <h2 id="accesos" className="mb-3 text-sm font-semibold text-texto-suave">
@@ -138,5 +140,73 @@ function EstadoSoporte() {
         ))}
       </div>
     </Tarjeta>
+  )
+}
+
+type Contador = { etiqueta: string; ruta: string; api: string; params: Record<string, string | boolean> }
+
+/** Qué tiene pendiente cada usuario según sus permisos, con enlace a la bandeja ya filtrada. */
+function contadoresDe(usuario: UsuarioSesion): Contador[] {
+  const puede = (p: Permiso) => usuario.permisos.includes(p)
+  const lista: Contador[] = []
+  if (usuario.alcance === 'GLOBAL') {
+    if (puede('TICKETS_ASIGNAR')) {
+      lista.push(
+        { etiqueta: 'Asignados a mí sin empezar', ruta: '/tickets?mios=1&estado=ABIERTO', api: '/api/tickets', params: { agenteId: usuario.id, estado: 'ABIERTO' } },
+        { etiqueta: 'Asignados a mí en proceso', ruta: '/tickets?mios=1&estado=EN_PROCESO', api: '/api/tickets', params: { agenteId: usuario.id, estado: 'EN_PROCESO' } },
+      )
+    }
+    if (puede('TICKETS_VER')) {
+      lista.push({ etiqueta: 'Tickets sin asignar', ruta: '/tickets?sinAsignar=1&estado=ABIERTO', api: '/api/tickets', params: { sinAsignar: true, estado: 'ABIERTO' } })
+    }
+    if (puede('SOLICITUDES_GESTIONAR')) {
+      lista.push({ etiqueta: 'Solicitudes de capacitación pendientes', ruta: '/solicitudes', api: '/api/solicitudes-capacitacion', params: { estado: 'PENDIENTE' } })
+    }
+  } else if (puede('TICKETS_VER') || puede('TICKETS_VER_PROPIOS')) {
+    const de = puede('TICKETS_VER') ? 'de tu empresa' : ''
+    lista.push(
+      { etiqueta: `Tickets abiertos ${de}`.trim(), ruta: '/tickets?estado=ABIERTO', api: '/api/tickets', params: { estado: 'ABIERTO' } },
+      { etiqueta: `Tickets en proceso ${de}`.trim(), ruta: '/tickets?estado=EN_PROCESO', api: '/api/tickets', params: { estado: 'EN_PROCESO' } },
+      { etiqueta: `Tickets resueltos ${de}`.trim(), ruta: '/tickets?estado=RESUELTO', api: '/api/tickets', params: { estado: 'RESUELTO' } },
+    )
+  }
+  return lista
+}
+
+function Pendientes({ usuario }: { usuario: UsuarioSesion }) {
+  const contadores = contadoresDe(usuario)
+  const totales = useQueries({
+    queries: contadores.map((c) => ({
+      queryKey: ['inicio', 'contador', c.api, c.params],
+      queryFn: ({ signal }: { signal: AbortSignal }) => api<Pagina<unknown>>(c.api, { params: { ...c.params, tamano: 1 }, signal }),
+      select: (p: Pagina<unknown>) => p.totalElementos,
+    })),
+  })
+  if (contadores.length === 0) return null
+
+  return (
+    <section aria-labelledby="pendientes">
+      <h2 id="pendientes" className="mb-3 text-sm font-semibold text-texto-suave">
+        {usuario.alcance === 'GLOBAL' ? 'Tu trabajo' : 'Tus tickets'}
+      </h2>
+      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {contadores.map((c, i) => {
+          const t = totales[i]
+          return (
+            <li key={c.ruta}>
+              <Link
+                to={c.ruta}
+                className="flex h-full flex-col rounded-tarjeta border border-borde bg-superficie p-4 shadow-tarjeta transition-colors hover:border-primario/40"
+              >
+                <span className="text-sm text-texto-suave">{c.etiqueta}</span>
+                <span className="mt-1 text-2xl font-semibold tracking-tight text-texto tabular-nums">
+                  {t.isPending ? '…' : t.isError ? '—' : t.data}
+                </span>
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
   )
 }
