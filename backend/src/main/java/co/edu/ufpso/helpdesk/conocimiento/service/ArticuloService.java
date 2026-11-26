@@ -44,6 +44,7 @@ import co.edu.ufpso.helpdesk.conocimiento.mapper.ArticuloMapper;
 import co.edu.ufpso.helpdesk.conocimiento.mapper.ArticuloMapper.ContextoArticulos;
 import co.edu.ufpso.helpdesk.conocimiento.repository.ArticuloRepository;
 import co.edu.ufpso.helpdesk.security.UsuarioAutenticado;
+import co.edu.ufpso.helpdesk.tickets.service.TicketService;
 import co.edu.ufpso.helpdesk.tickets.service.TicketsExistentesService;
 import co.edu.ufpso.helpdesk.usuarios.service.NombresUsuarioService;
 
@@ -78,19 +79,25 @@ public class ArticuloService {
     /** Los cinco módulos. Sin filtro de módulo, el listado pide los cinco para que MongoDB use el índice. */
     private static final List<ModuloErp> TODOS_LOS_MODULOS = Arrays.asList(ModuloErp.values());
 
+    /** Tope de artículos que devuelve la consulta por ticket: un ticket suele tener una o dos soluciones. */
+    private static final int MAX_POR_TICKET = 20;
+
     private final ArticuloRepository repositorio;
     private final MongoTemplate template;
     private final ProveedorEmbeddings embeddings;
     private final TicketsExistentesService tickets;
+    private final TicketService ticketsVisibles;
     private final NombresUsuarioService nombresUsuarios;
     private final Clock reloj;
 
     public ArticuloService(ArticuloRepository repositorio, MongoTemplate template, ProveedorEmbeddings embeddings,
-            TicketsExistentesService tickets, NombresUsuarioService nombresUsuarios, Clock reloj) {
+            TicketsExistentesService tickets, TicketService ticketsVisibles, NombresUsuarioService nombresUsuarios,
+            Clock reloj) {
         this.repositorio = repositorio;
         this.template = template;
         this.embeddings = embeddings;
         this.tickets = tickets;
+        this.ticketsVisibles = ticketsVisibles;
         this.nombresUsuarios = nombresUsuarios;
         this.reloj = reloj;
     }
@@ -155,6 +162,30 @@ public class ArticuloService {
             throw noExiste();
         }
         return respuesta(articulo, actor);
+    }
+
+    /**
+     * Artículos vinculados como solución de un ticket (tarea 3.7), para mostrarlos en el detalle del ticket.
+     *
+     * <p>Primero comprueba que el actor pueda ver el ticket con la misma regla de HU22
+     * ({@link TicketService#obtener}): un ticket ajeno o inexistente responde 404, así nadie averigua qué
+     * artículos resolvieron tickets de otra empresa cambiando el id. Después aplica la visibilidad de siempre:
+     * sin {@code ARTICULOS_VER_INTERNOS} solo salen los PUBLICO.
+     *
+     * <p>Usa {@code ix_articulos_ticketIds} (multikey). Sin contenido ni vector, como el listado; máximo
+     * {@value #MAX_POR_TICKET}, del más reciente al más antiguo.
+     */
+    public List<ArticuloResumenResponse> porTicket(ObjectId ticketId, UsuarioAutenticado actor) {
+        ticketsVisibles.obtener(ticketId, actor);
+        Query consulta = new Query(Criteria.where("ticketIds").is(ticketId));
+        if (!actor.tiene(Permiso.ARTICULOS_VER_INTERNOS)) {
+            consulta.addCriteria(Criteria.where("visibilidad").is(Visibilidad.PUBLICO));
+        }
+        consulta.fields().exclude("contenido").exclude("embedding");
+        consulta.with(Sort.by(Sort.Direction.DESC, "fechaCreacion")).limit(MAX_POR_TICKET);
+        List<Articulo> articulos = template.find(consulta, Articulo.class);
+        ContextoArticulos contexto = contexto(articulos, actor);
+        return articulos.stream().map(a -> ArticuloMapper.aResumen(a, contexto)).toList();
     }
 
     // ------------------------------------------------------------------

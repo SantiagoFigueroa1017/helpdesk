@@ -1,6 +1,7 @@
 package co.edu.ufpso.helpdesk.conocimiento.controller;
 
 import java.net.URI;
+import java.util.List;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
@@ -85,6 +86,17 @@ public class ArticuloController {
     @PreAuthorize("hasAuthority('ARTICULOS_VER')")
     public ArticuloResponse obtener(@PathVariable String id, @AuthenticationPrincipal UsuarioAutenticado actor) {
         return servicio.obtener(Ids.deRuta(id), actor);
+    }
+
+    /**
+     * Artículos vinculados como solución de un ticket (tarea 3.7). Si el actor no puede ver el ticket, 404.
+     * Sin {@code ARTICULOS_VER_INTERNOS}, solo los PUBLICO.
+     */
+    @GetMapping("/por-ticket/{ticketId}")
+    @PreAuthorize("hasAuthority('ARTICULOS_VER')")
+    public List<ArticuloResumenResponse> porTicket(@PathVariable String ticketId,
+            @AuthenticationPrincipal UsuarioAutenticado actor) {
+        return servicio.porTicket(Ids.deRuta(ticketId), actor);
     }
 
     /** HU29. Responde 201 con la cabecera {@code Location}. */

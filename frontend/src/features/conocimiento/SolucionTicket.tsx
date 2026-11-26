@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, FilePlus2, Link2, Unlink } from 'lucide-react'
 import { Link } from 'react-router'
 
@@ -12,7 +12,7 @@ import { ETIQUETA_MODULO, type ModuloErp } from '@/lib/dominio'
 import { mensajeAviso, useBusquedaArticulos, type ModoBusqueda } from './busqueda'
 import { FormularioArticulo } from './FormularioArticulo'
 import { SelectorModo } from './SelectorModo'
-import type { Articulo } from './tipos'
+import type { Articulo, ArticuloResumen } from './tipos'
 
 type TicketBase = { id: string; titulo: string; descripcion: string; modulo: ModuloErp; estado: string }
 
@@ -21,6 +21,9 @@ type TicketBase = { id: string; titulo: string; descripcion: string; modulo: Mod
  * mientras atiende el ticket y la vincula (POST /api/articulos/{id}/tickets/{ticketId}); si el
  * problema es nuevo, lo documenta en un artículo que nace vinculado al ticket (HU29 con ticketIds).
  * El cliente ve solo los artículos públicos y puede intentar resolverlo por su cuenta.
+ *
+ * Arriba muestra la "Solución aplicada": los artículos ya vinculados al ticket
+ * (GET /api/articulos/por-ticket/{ticketId}), así la trazabilidad se conserva al recargar.
  */
 export function SolucionTicket({ ticket }: { ticket: TicketBase }) {
   const { puede, esPersonal } = usePermisos()
@@ -30,31 +33,41 @@ export function SolucionTicket({ ticket }: { ticket: TicketBase }) {
   const [soloModulo, setSoloModulo] = useState(true)
   const [nuevo, setNuevo] = useState(false)
   const [creado, setCreado] = useState<Articulo | null>(null)
-  // Artículos vinculados o desvinculados en esta visita (la búsqueda no trae los tickets de cada artículo).
-  const [vinculos, setVinculos] = useState<Record<string, boolean>>({})
 
   const gestiona = esPersonal && puede('ARTICULOS_EDITAR') && puede('TICKETS_VER')
   const { listo, palabras, buscado, consulta } = useBusquedaArticulos(modo, texto, soloModulo ? ticket.modulo : '', 5)
+  const claveVinculados = ['articulos', 'por-ticket', ticket.id]
+  const vinculados = useQuery({
+    queryKey: claveVinculados,
+    queryFn: ({ signal }) => api<ArticuloResumen[]>(`/api/articulos/por-ticket/${ticket.id}`, { signal }),
+    enabled: puede('ARTICULOS_VER'),
+  })
+  const idsVinculados = new Set((vinculados.data ?? []).map((a) => a.id))
+  const abierto = ticket.estado === 'ABIERTO' || ticket.estado === 'EN_PROCESO'
 
   const vincular = useMutation({
     mutationFn: (v: { articuloId: string; quitar: boolean }) =>
       api<Articulo>(`/api/articulos/${v.articuloId}/tickets/${ticket.id}`, { metodo: v.quitar ? 'DELETE' : 'POST' }),
-    onSuccess: (a, v) => {
-      setVinculos((m) => ({ ...m, [a.id]: !v.quitar }))
+    onSuccess: (a) => {
       cliente.setQueryData(['articulos', 'detalle', a.id], a)
+      void cliente.invalidateQueries({ queryKey: claveVinculados })
       void cliente.invalidateQueries({ queryKey: ['articulos', 'lista'] })
     },
   })
 
   if (!puede('ARTICULOS_VER')) return null
+  // Al cliente, con el ticket ya resuelto o cerrado, solo le sirve ver la solución aplicada.
+  if (!gestiona && !abierto && idsVinculados.size === 0) return null
 
   return (
     <Tarjeta
-      titulo={esPersonal ? 'Solución en la base de conocimientos' : '¿Ya existe una solución?'}
+      titulo={esPersonal ? 'Solución en la base de conocimientos' : abierto ? '¿Ya existe una solución?' : 'Solución de tu ticket'}
       descripcion={
         esPersonal
           ? 'Busca un artículo que resuelva este ticket y vincúlalo. Si el problema es nuevo, documéntalo.'
-          : 'Puede que tu problema ya tenga una solución documentada.'
+          : abierto
+            ? 'Puede que tu problema ya tenga una solución documentada.'
+            : 'El artículo con el que el agente resolvió tu caso.'
       }
       acciones={
         gestiona &&
@@ -69,10 +82,42 @@ export function SolucionTicket({ ticket }: { ticket: TicketBase }) {
         {creado && (
           <Aviso tono="exito" titulo="Solución documentada">
             Se creó <Link to={`/conocimiento/${creado.id}`} className="font-medium underline">{creado.titulo}</Link> vinculado a este
-            ticket.{ticket.estado !== 'RESUELTO' && ticket.estado !== 'CERRADO' && ' Ya puedes marcar el ticket como Resuelto.'}
+            ticket.
           </Aviso>
         )}
 
+        {vinculados.data && vinculados.data.length > 0 && (
+          <div className="rounded-control border border-exito-texto/30 bg-exito-fondo p-3">
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-exito-texto">
+              <Check aria-hidden className="size-4" /> Solución aplicada
+            </p>
+            <ul className="mt-2 flex flex-col gap-1.5">
+              {vinculados.data.map((a) => (
+                <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Link to={`/conocimiento/${a.id}`} className="font-medium text-texto hover:text-primario hover:underline">{a.titulo}</Link>
+                    {a.visibilidad === 'INTERNO' && <Insignia tono="aviso">Interno</Insignia>}
+                  </span>
+                  {gestiona && (
+                    <Boton
+                      tamano="sm"
+                      variante="fantasma"
+                      cargando={vincular.isPending && vincular.variables?.articuloId === a.id}
+                      icono={<Unlink aria-hidden className="size-4" />}
+                      onClick={() => vincular.mutate({ articuloId: a.id, quitar: true })}
+                    >
+                      Quitar vínculo
+                    </Boton>
+                  )}
+                </li>
+              ))}
+            </ul>
+            {gestiona && abierto && <p className="mt-2 text-xs text-exito-texto">Ya puedes marcar el ticket como Resuelto.</p>}
+          </div>
+        )}
+
+        {!gestiona && !abierto ? null : (
+          <>
         <SelectorModo modo={modo} onCambiar={setModo} />
         <CampoTexto
           etiqueta={modo === 'texto' ? 'Buscar por palabras' : 'Describe el problema'}
@@ -101,7 +146,7 @@ export function SolucionTicket({ ticket }: { ticket: TicketBase }) {
             ) : (
               <ol className="flex flex-col divide-y divide-borde">
                 {consulta.data.resultados.map((r) => {
-                  const vinculado = vinculos[r.id] === true
+                  const vinculado = idsVinculados.has(r.id)
                   const ocupado = vincular.isPending && vincular.variables?.articuloId === r.id
                   return (
                     <li key={r.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between">
@@ -130,13 +175,10 @@ export function SolucionTicket({ ticket }: { ticket: TicketBase }) {
                 })}
               </ol>
             )}
-            {Object.values(vinculos).some(Boolean) && ticket.estado !== 'RESUELTO' && ticket.estado !== 'CERRADO' && (
-              <p className="flex items-center gap-1.5 text-sm text-exito-texto">
-                <Check aria-hidden className="size-4" /> Solución vinculada. Ya puedes marcar el ticket como Resuelto.
-              </p>
-            )}
             {!esPersonal && <p className="text-xs text-texto-suave">Si un artículo resolvió tu problema, cuéntalo en los comentarios.</p>}
           </div>
+        )}
+          </>
         )}
       </div>
 
@@ -153,7 +195,7 @@ export function SolucionTicket({ ticket }: { ticket: TicketBase }) {
           onGuardado={(a) => {
             setNuevo(false)
             setCreado(a)
-            setVinculos((m) => ({ ...m, [a.id]: true }))
+            void cliente.invalidateQueries({ queryKey: claveVinculados })
           }}
         />
       )}
