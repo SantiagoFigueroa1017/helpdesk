@@ -22,7 +22,12 @@ public record TicketResponse(String id, String empresaId, String empresaNombre, 
         List<CambioEstadoResponse> historialEstados, Instant fechaLimiteRespuesta, Instant fechaPrimeraAsignacion,
         Instant fechaResolucion, Instant fechaCreacion, Instant fechaActualizacion) {
 
-    /** Una entrada del historial: a qué estado pasó, cuándo y quién lo hizo (HU23). */
-    public record CambioEstadoResponse(String estado, Instant fecha, String usuarioId, String usuarioNombre) {
+    /**
+     * Una entrada del historial: a qué estado pasó, cuándo y quién lo hizo (HU23). Desde 3.7 también
+     * las asignaciones: {@code tipo = "ASIGNACION"} con el agente nuevo ({@code agenteId} y
+     * {@code agenteNombre} null si quedó sin agente). En un cambio de estado, {@code tipo = "ESTADO"}.
+     */
+    public record CambioEstadoResponse(String tipo, String estado, Instant fecha, String usuarioId,
+            String usuarioNombre, String agenteId, String agenteNombre) {
     }
 }

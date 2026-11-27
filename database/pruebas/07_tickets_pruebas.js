@@ -6,8 +6,9 @@
 // helpdesk_pruebas, inserta 19 documentos y al final borra esa base.
 // No toca los datos de helpdesk.
 //
-// Resultado esperado: 6 inserciones aceptadas, 13 rechazadas, 19/19 OK.
+// Resultado esperado: 7 inserciones aceptadas, 14 rechazadas, 21/21 OK.
 // Los casos 18 y 19 comprueban que _class no se admite (decisión de 2.3).
+// Los casos 20 y 21 prueban las entradas de asignación del historial (tarea 3.7).
 // =====================================================================
 
 (function () {
@@ -95,7 +96,13 @@
     ["18 _class en la raíz", false,
       Object.assign(base(), { _class: "co.edu.ufpso.helpdesk.tickets.domain.Ticket" })],
     ["19 _class dentro del detalle", false,
-      incidente("VENTAS_ONLINE", Object.assign({ _class: "DetalleVentasOnline" }, detalleVentasOnline))]
+      incidente("VENTAS_ONLINE", Object.assign({ _class: "DetalleVentasOnline" }, detalleVentasOnline))],
+    ["20 Historial con una asignación", true,
+      Object.assign(base(), { agenteId: usuario, historialEstados: [
+        { estado: "ABIERTO", fecha: ahora, usuarioId: usuario },
+        { estado: "ABIERTO", fecha: ahora, usuarioId: usuario, tipo: "ASIGNACION", agenteId: usuario }] })],
+    ["21 Historial con un tipo desconocido", false,
+      Object.assign(base(), { historialEstados: [{ estado: "ABIERTO", fecha: ahora, usuarioId: usuario, tipo: "PRIORIDAD" }] })]
   ];
 
   let correctos = 0;

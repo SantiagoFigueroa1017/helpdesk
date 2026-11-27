@@ -24,8 +24,12 @@ export function RutaConSesion() {
     )
   }
   if (sesion.estado === 'anonima') {
+    // Solo se recuerda la página cuando la sesión venció o se abrió un enlace sin sesión. Si el usuario
+    // cerró sesión (o cambió la contraseña), quien entre después empieza en Inicio: puede ser otra
+    // persona, con otros permisos.
+    const recordar = sesion.motivo !== 'salio' && sesion.motivo !== 'password'
     const volver = ubicacion.pathname + ubicacion.search
-    const destino = volver === '/' ? '/login' : `/login?volver=${encodeURIComponent(volver)}`
+    const destino = !recordar || volver === '/' ? '/login' : `/login?volver=${encodeURIComponent(volver)}`
     return <Navigate to={destino} replace />
   }
   return <Layout usuario={sesion.usuario} />

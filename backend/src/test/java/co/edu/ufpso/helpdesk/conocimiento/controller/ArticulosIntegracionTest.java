@@ -439,6 +439,35 @@ class ArticulosIntegracionTest {
     }
 
     @Test
+    void laSolucionDeUnTicketSoloLaVeQuienPuedeVerElTicket() throws Exception {
+        Articulo publico = articulo("Caja lenta al facturar", ModuloErp.VENTAS_EN_SITIO, Visibilidad.PUBLICO);
+        Articulo interno = articulo("Reiniciar el servicio de la caja", ModuloErp.VENTAS_EN_SITIO, Visibilidad.INTERNO);
+        articulo("Sin vínculo", ModuloErp.VENTAS_EN_SITIO, Visibilidad.PUBLICO);
+        for (Articulo a : List.of(publico, interno)) {
+            template.updateFirst(new Query(Criteria.where("_id").is(a.getId())),
+                    new Update().push("ticketIds", ticket.getId()), Articulo.class);
+        }
+        Usuario otroCliente = usuario("Rosa Pérez", "rosa@panaderia.co", new ObjectId(),
+                rol("CLIENTE_2", AlcanceRol.EMPRESA, List.of(Permiso.ARTICULOS_VER, Permiso.TICKETS_VER_PROPIOS)));
+        String ruta = "/api/articulos/por-ticket/" + ticket.getId();
+
+        mvc.perform(como(agente, get(ruta)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].contenido").doesNotExist());
+        // El solicitante ve solo la solución pública.
+        mvc.perform(como(cliente, get(ruta)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value(publico.getId().toHexString()));
+        // Un ticket ajeno o inexistente responde 404 (IDOR).
+        mvc.perform(como(otroCliente, get(ruta)))
+                .andExpect(status().isNotFound());
+        mvc.perform(como(agente, get("/api/articulos/por-ticket/" + new ObjectId())))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void conQuinientosTicketsNoSeVinculaOtro() throws Exception {
         Articulo a = articulo("Caja lenta", ModuloErp.VENTAS_EN_SITIO, Visibilidad.PUBLICO);
         List<ObjectId> quinientos = new ArrayList<>();

@@ -23,13 +23,12 @@ import { SolucionTicket } from '@/features/conocimiento/SolucionTicket'
 import {
   COLOR_MODULO,
   ESTADO_TICKET,
-  ESTADOS_TICKET,
   ETIQUETA_MODULO,
   ETIQUETA_TIPO_TICKET,
   MOTIVO_SIN_SOPORTE,
   formato,
   opcionesModulo,
-  type EstadoTicket,
+  siguientesEstados,
 } from '@/lib/dominio'
 import { useFormulario } from '@/lib/formulario'
 
@@ -101,7 +100,8 @@ export function PaginaTicket() {
   const abierto = t.estado === 'ABIERTO' || t.estado === 'EN_PROCESO'
   const puedeEditar =
     puede('TICKETS_EDITAR') || (puede('TICKETS_EDITAR_PROPIOS') && t.solicitanteId === yo && t.estado === 'ABIERTO' && !t.agenteId)
-  const puedeEstado = t.agenteId === yo || puede('TICKETS_ASIGNAR_OTROS')
+  const siguientes = siguientesEstados(t.estado, puede('TICKETS_ASIGNAR_OTROS'))
+  const puedeEstado = (t.agenteId === yo || puede('TICKETS_ASIGNAR_OTROS')) && siguientes.length > 0
   const puedeAsignarme = puede('TICKETS_ASIGNAR') && !puede('TICKETS_ASIGNAR_OTROS') && !t.agenteId && abierto
   const puedeReasignar = puede('TICKETS_ASIGNAR_OTROS') && abierto
   const camposModulo = campos.data?.find((c) => c.modulo === t.modulo)?.campos ?? []
@@ -213,8 +213,14 @@ export function PaginaTicket() {
                   vacio="Selecciona"
                   value={nuevoEstado}
                   onChange={(e) => setNuevoEstado(e.target.value)}
-                  opciones={ESTADOS_TICKET.filter((e) => e !== t.estado).map((e) => ({ valor: e, etiqueta: ESTADO_TICKET[e].etiqueta }))}
-                  ayuda={!t.agenteId ? 'En proceso y Resuelto necesitan un agente asignado.' : undefined}
+                  opciones={siguientes.map((e) => ({ valor: e, etiqueta: ESTADO_TICKET[e].etiqueta }))}
+                  ayuda={
+                    !t.agenteId && siguientes.includes('EN_PROCESO')
+                      ? 'En proceso y Resuelto necesitan un agente asignado.'
+                      : t.estado === 'RESUELTO'
+                        ? 'Ciérralo cuando el cliente confirme, o vuelve a En proceso si no quedó resuelto.'
+                        : undefined
+                  }
                 />
                 <Boton type="submit" variante="secundario" disabled={!nuevoEstado} cargando={cambiarEstado.isPending}>Aplicar</Boton>
               </form>
@@ -225,9 +231,24 @@ export function PaginaTicket() {
             <ol className="relative flex flex-col gap-4 border-l border-borde pl-4">
               {[...t.historialEstados].reverse().map((h, i) => (
                 <li key={`${h.fecha}-${i}`} className="relative">
-                  <span aria-hidden className="absolute top-1.5 -left-[1.3rem] size-2.5 rounded-full border-2 border-superficie bg-primario" />
-                  <Insignia tono={ESTADO_TICKET[h.estado as EstadoTicket].tono}>{ESTADO_TICKET[h.estado as EstadoTicket].etiqueta}</Insignia>
-                  <p className="mt-1 text-xs text-texto-suave">{formato.fechaHora(h.fecha)} · {h.usuarioNombre}</p>
+                  <span
+                    aria-hidden
+                    className={`absolute top-1.5 -left-[1.3rem] size-2.5 rounded-full border-2 border-superficie ${h.tipo === 'ASIGNACION' ? 'bg-acento' : 'bg-primario'}`}
+                  />
+                  {h.tipo === 'ASIGNACION' ? (
+                    <p className="text-sm">
+                      {h.agenteNombre ? (
+                        <>Asignado a <span className="font-medium">{h.agenteNombre}</span></>
+                      ) : (
+                        <span className="italic">Quedó sin agente</span>
+                      )}
+                    </p>
+                  ) : (
+                    <Insignia tono={ESTADO_TICKET[h.estado].tono}>{ESTADO_TICKET[h.estado].etiqueta}</Insignia>
+                  )}
+                  <p className="mt-1 text-xs text-texto-suave">
+                    {formato.fechaHora(h.fecha)} · {h.tipo === 'ASIGNACION' ? 'por ' : ''}{h.usuarioNombre}
+                  </p>
                 </li>
               ))}
             </ol>

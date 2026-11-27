@@ -99,12 +99,15 @@ import co.edu.ufpso.helpdesk.usuarios.service.UsuarioSesionService;
  *       {@code TICKETS_EDITAR} (agente): además módulo y tipo, en cualquier estado. Soporte: el
  *       cliente con {@code exigirSoporte}, el agente con {@code exigirSoporteEmpresa} del ticket.</li>
  *   <li>Estado: lo cambia el agente asignado o quien tiene {@code TICKETS_ASIGNAR_OTROS}
- *       (decidido en 2.6). Cualquier estado distinto del actual (HU23). EN_PROCESO y RESUELTO exigen
- *       agente. RESUELTO o CERRADO llenan {@code fechaResolucion} si estaba vacía; ABIERTO o
+ *       (decidido en 2.6). Desde 3.7 sigue el flujo de {@link EstadoTicket}: ABIERTO → EN_PROCESO →
+ *       RESUELTO → CERRADO, con regreso de EN_PROCESO a ABIERTO y de RESUELTO a EN_PROCESO; el
+ *       administrador además cierra un ABIERTO y reabre un CERRADO. Otro salto, 422. EN_PROCESO y
+ *       RESUELTO exigen agente. RESUELTO o CERRADO llenan {@code fechaResolucion} si estaba vacía; ABIERTO o
  *       EN_PROCESO la vacían. Cada cambio entra al historial; con 50 entradas, 422.</li>
  *   <li>Asignación: con {@code TICKETS_ASIGNAR}, a sí mismo y solo si no tiene agente; con
  *       {@code TICKETS_ASIGNAR_OTROS}, a cualquier agente o sin agente. Agente = usuario activo de
- *       alcance GLOBAL con {@code TICKETS_ASIGNAR} (la misma definición de A3).</li>
+ *       alcance GLOBAL con {@code TICKETS_ASIGNAR} (la misma definición de A3). Desde 3.7 cada
+ *       asignación entra al historial como entrada ASIGNACION (comparte el tope de 50).</li>
  *   <li>Las tres escriben solo si el ticket no cambió desde que se leyó ({@code fechaActualizacion}
  *       igual): si otra persona lo cambió en medio, 409 {@code CONFLICTO} y no se pisa su cambio.</li>
  * </ul>
@@ -395,13 +398,16 @@ public class TicketService {
         if (nuevo == ticket.getEstado()) {
             throw new ReglaNegocioException("El ticket ya está en estado " + nuevo + ".");
         }
+        boolean administrador = actor.tiene(Permiso.TICKETS_ASIGNAR_OTROS);
+        if (!ticket.getEstado().puedePasarA(nuevo, administrador)) {
+            throw new ReglaNegocioException(ticket.getEstado() == EstadoTicket.CERRADO
+                    ? "El ticket está cerrado. Solo un administrador puede reabrirlo."
+                    : "Un ticket " + ticket.getEstado() + " no puede pasar a " + nuevo + ".");
+        }
         if ((nuevo == EstadoTicket.EN_PROCESO || nuevo == EstadoTicket.RESUELTO) && ticket.getAgenteId() == null) {
             throw new ReglaNegocioException("Asigne un agente antes de pasar el ticket a " + nuevo + ".");
         }
-        if (ticket.getHistorialEstados().size() >= Ticket.MAX_HISTORIAL) {
-            throw new ReglaNegocioException("El historial del ticket llegó al máximo de "
-                    + Ticket.MAX_HISTORIAL + " cambios de estado.");
-        }
+        exigirEspacioEnHistorial(ticket);
 
         Instant leida = ticket.getFechaActualizacion();
         Instant ahora = ahora();
@@ -448,9 +454,12 @@ public class TicketService {
             throw new ReglaNegocioException("El usuario indicado no es un agente de soporte activo.");
         }
 
+        exigirEspacioEnHistorial(ticket);
+
         Instant leida = ticket.getFechaActualizacion();
         Instant ahora = ahora();
         ticket.setAgenteId(nuevo);
+        ticket.getHistorialEstados().add(CambioEstado.asignacion(ticket.getEstado(), ahora, actor.id(), nuevo));
         if (nuevo != null && ticket.getFechaPrimeraAsignacion() == null) {
             ticket.setFechaPrimeraAsignacion(ahora);
         }
@@ -458,7 +467,15 @@ public class TicketService {
         return respuesta(guardar(ticket, leida));
     }
 
-    /** Usuario activo, de alcance GLOBAL, con {@code TICKETS_ASIGNAR} en un rol activo (definición de A3). */
+    /** El historial tiene tope de 50 entradas en el validador (estados y asignaciones): con 50, 422. */
+    private static void exigirEspacioEnHistorial(Ticket ticket) {
+        if (ticket.getHistorialEstados().size() >= Ticket.MAX_HISTORIAL) {
+            throw new ReglaNegocioException("El historial del ticket llegó al máximo de "
+                    + Ticket.MAX_HISTORIAL + " cambios.");
+        }
+    }
+
+        /** Usuario activo, de alcance GLOBAL, con {@code TICKETS_ASIGNAR} en un rol activo (definición de A3). */
     private boolean esAgente(ObjectId usuarioId) {
         return permisos.resolver(usuarioId)
                 .filter(u -> !u.esDeEmpresa() && u.tiene(Permiso.TICKETS_ASIGNAR))

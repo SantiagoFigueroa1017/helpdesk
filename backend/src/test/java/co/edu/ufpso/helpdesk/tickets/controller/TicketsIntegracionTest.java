@@ -768,7 +768,8 @@ class TicketsIntegracionTest {
     // ---------- HU23 · estado ----------
 
     @Test
-    void elAgenteAsignadoLlevaElTicketHastaCerrarloYPuedeReabrirlo() throws Exception {
+    void elAgenteAsignadoLlevaElTicketPorElFlujoHastaCerrarlo() throws Exception {
+        Usuario liliana = administrador();
         cuatroTickets();
         String ruta = "/api/tickets/" + porTitulo("Camilo 1").getId();
 
@@ -776,25 +777,43 @@ class TicketsIntegracionTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.agenteNombre").value("Andrés Pabón"))
                 .andExpect(jsonPath("$.fechaPrimeraAsignacion").exists());
+        // Flujo de 3.7: de ABIERTO no se salta a RESUELTO.
+        mvc.perform(ponerComo(agente, ruta + "/estado", estado("RESUELTO")))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.detail").value(containsString("no puede pasar a RESUELTO")));
+        mvc.perform(ponerComo(agente, ruta + "/estado", estado("EN_PROCESO")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fechaResolucion").doesNotExist());
+        mvc.perform(ponerComo(agente, ruta + "/estado", estado("RESUELTO")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fechaResolucion").exists());
+        // El cliente dijo que no quedó: RESUELTO vuelve a EN_PROCESO y se borra la resolución (base de A1).
         mvc.perform(ponerComo(agente, ruta + "/estado", estado("EN_PROCESO")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.fechaResolucion").doesNotExist());
         String resuelto = mvc.perform(ponerComo(agente, ruta + "/estado", estado("RESUELTO")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.fechaResolucion").exists())
                 .andReturn().getResponse().getContentAsString();
         String fechaResolucion = JsonPath.read(resuelto, "$.fechaResolucion");
         // De RESUELTO a CERRADO se conserva la fecha de resolución.
         mvc.perform(ponerComo(agente, ruta + "/estado", estado("CERRADO")))
-                .andExpect(jsonPath("$.fechaResolucion").value(fechaResolucion));
-        mvc.perform(ponerComo(agente, ruta + "/estado", estado("ABIERTO")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fechaResolucion").value(fechaResolucion))
+                .andExpect(jsonPath("$.historialEstados[*].tipo").value(org.hamcrest.Matchers.contains(
+                        "ESTADO", "ASIGNACION", "ESTADO", "ESTADO", "ESTADO", "ESTADO", "ESTADO")))
+                .andExpect(jsonPath("$.historialEstados[*].estado").value(org.hamcrest.Matchers.contains(
+                        "ABIERTO", "ABIERTO", "EN_PROCESO", "RESUELTO", "EN_PROCESO", "RESUELTO", "CERRADO")))
+                .andExpect(jsonPath("$.historialEstados[1].agenteNombre").value("Andrés Pabón"));
+        // CERRADO es final para el agente; solo el administrador lo reabre, y a EN_PROCESO.
+        mvc.perform(ponerComo(agente, ruta + "/estado", estado("EN_PROCESO")))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.detail").value(containsString("Solo un administrador")));
+        mvc.perform(ponerComo(liliana, ruta + "/estado", estado("ABIERTO")))
+                .andExpect(status().isUnprocessableContent());
+        mvc.perform(ponerComo(liliana, ruta + "/estado", estado("EN_PROCESO")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.fechaResolucion").doesNotExist())
-                .andExpect(jsonPath("$.historialEstados[*].estado").value(org.hamcrest.Matchers.contains(
-                        "ABIERTO", "EN_PROCESO", "RESUELTO", "CERRADO", "ABIERTO")))
-                .andExpect(jsonPath("$.historialEstados[4].usuarioNombre").value("Andrés Pabón"));
-        mvc.perform(ponerComo(agente, ruta + "/estado", estado("ABIERTO")))
-                .andExpect(status().isUnprocessableContent());
+                .andExpect(jsonPath("$.historialEstados[7].usuarioNombre").value("Liliana Contreras"));
     }
 
     @Test
@@ -887,9 +906,23 @@ class TicketsIntegracionTest {
                 .andExpect(jsonPath("$.detail").value(containsString("no es un agente")));
         mvc.perform(ponerComo(liliana, ruta1 + "/asignacion", agenteId(inactivo)))
                 .andExpect(status().isUnprocessableContent());
+        // Cada asignación queda en el historial con quién la hizo y el agente nuevo (3.7).
         mvc.perform(ponerComo(liliana, ruta1 + "/asignacion", agenteId(null)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.agenteId").doesNotExist());
+                .andExpect(jsonPath("$.agenteId").doesNotExist())
+                .andExpect(jsonPath("$.historialEstados[*].tipo").value(org.hamcrest.Matchers.contains(
+                        "ESTADO", "ASIGNACION", "ASIGNACION", "ASIGNACION")))
+                .andExpect(jsonPath("$.historialEstados[1].agenteNombre").value("Andrés Pabón"))
+                .andExpect(jsonPath("$.historialEstados[1].usuarioNombre").value("Liliana Contreras"))
+                .andExpect(jsonPath("$.historialEstados[2].agenteNombre").value("Paula Ardila"))
+                .andExpect(jsonPath("$.historialEstados[3].agenteId").doesNotExist())
+                .andExpect(jsonPath("$.historialEstados[3].estado").value("ABIERTO"));
+        Document guardada = crudo(camilo1.getId().toHexString()).getList("historialEstados", Document.class).get(3);
+        assertThat(guardada.getString("tipo")).isEqualTo("ASIGNACION");
+        assertThat(guardada.containsKey("agenteId")).isFalse();
+        // La entrada de un cambio de estado no lleva tipo ni agente, como las de la semilla.
+        Document primera0 = crudo(camilo1.getId().toHexString()).getList("historialEstados", Document.class).get(0);
+        assertThat(primera0.containsKey("tipo")).isFalse();
         // Un ticket EN_PROCESO no se queda sin agente.
         mvc.perform(ponerComo(liliana, ruta2 + "/asignacion", agenteId(null)))
                 .andExpect(status().isUnprocessableContent())

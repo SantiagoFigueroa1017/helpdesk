@@ -33,7 +33,10 @@ public final class TicketMapper {
             ids.add(t.getSolicitanteId());
             ids.add(t.getAgenteId());
             if (t.getHistorialEstados() != null) {
-                t.getHistorialEstados().forEach(c -> ids.add(c.usuarioId()));
+                t.getHistorialEstados().forEach(c -> {
+                    ids.add(c.usuarioId());
+                    ids.add(c.agenteId());
+                });
             }
         }
         ids.remove(null);
@@ -96,8 +99,8 @@ public final class TicketMapper {
     }
 
     private static CambioEstadoResponse aRespuesta(CambioEstado c, NombresTicket n) {
-        return new CambioEstadoResponse(c.estado().name(), c.fecha(), c.usuarioId().toHexString(),
-                n.usuario(c.usuarioId()));
+        return new CambioEstadoResponse(c.esAsignacion() ? "ASIGNACION" : "ESTADO", c.estado().name(), c.fecha(),
+                c.usuarioId().toHexString(), n.usuario(c.usuarioId()), hex(c.agenteId()), n.usuario(c.agenteId()));
     }
 
     // ---------- formulario dinámico ----------

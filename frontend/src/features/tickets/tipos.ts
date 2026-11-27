@@ -27,7 +27,16 @@ export type Ticket = TicketResumen & {
   creadorNombre: string
   descripcion: string
   detalle: Record<string, string | number> | null
-  historialEstados: { estado: EstadoTicket; fecha: string; usuarioId: string; usuarioNombre: string }[]
+  /** Cambios de estado y, desde 3.7, asignaciones (tipo ASIGNACION, con el agente nuevo o null). */
+  historialEstados: {
+    tipo: 'ESTADO' | 'ASIGNACION'
+    estado: EstadoTicket
+    fecha: string
+    usuarioId: string
+    usuarioNombre: string
+    agenteId: string | null
+    agenteNombre: string | null
+  }[]
   fechaPrimeraAsignacion: string | null
   fechaActualizacion: string
 }

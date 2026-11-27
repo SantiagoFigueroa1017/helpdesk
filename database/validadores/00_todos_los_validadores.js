@@ -576,7 +576,11 @@
             properties: {
               estado: { enum: ESTADOS },
               fecha: { bsonType: "date" },
-              usuarioId: { bsonType: "objectId" }
+              usuarioId: { bsonType: "objectId" },
+              // Desde 3.7: una entrada con tipo ASIGNACION registra quién asignó, reasignó o quitó el
+              // agente (agenteId = el nuevo; sin agenteId = quedó sin agente). Sin tipo = cambio de estado.
+              tipo: { enum: ["ASIGNACION"] },
+              agenteId: { bsonType: "objectId" }
             }
           }
         },

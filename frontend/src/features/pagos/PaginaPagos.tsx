@@ -89,19 +89,41 @@ export function PaginaPagos() {
   )
 }
 
+const PREFIJO_METODO: Record<string, string> = {
+  TRANSFERENCIA: 'TRF',
+  TARJETA: 'TAR',
+  PSE: 'PSE',
+  EFECTIVO: 'EFE',
+  CONSIGNACION: 'CON',
+}
+
+/**
+ * Referencia sugerida a partir del método y de la fecha y hora del pago (tarea 3.7), por ejemplo
+ * PSE-20261127-0849. La real es el número del comprobante del banco o de la pasarela: quien registra
+ * la reemplaza si la tiene. Mientras no la escriba a mano, cambia con el método y la fecha.
+ */
+const referenciaSugerida = (metodo: string, fechaLocal: string) =>
+  `${PREFIJO_METODO[metodo] ?? 'PAG'}-${fechaLocal.slice(0, 10).replaceAll('-', '')}-${fechaLocal.slice(11, 16).replace(':', '')}`
+
 function FormularioPago({ pago, empresas, onCerrar }: { pago?: Pago; empresas: { valor: string; etiqueta: string }[]; onCerrar: () => void }) {
   const cliente = useQueryClient()
   const [empresaId, setEmpresaId] = useState(pago?.empresaId ?? '')
   const membresia = useMembresia(empresaId, !pago && Boolean(empresaId))
+  const [fechaInicial] = useState(() => aFechaHoraLocal(pago?.fechaPago ?? new Date().toISOString()))
   const form = useFormulario({
     membresiaId: pago?.membresiaId ?? '',
     monto: pago ? String(pago.monto) : '',
-    fechaPago: aFechaHoraLocal(pago?.fechaPago ?? new Date().toISOString()),
+    fechaPago: fechaInicial,
     metodoPago: (pago?.metodoPago as string) ?? 'TRANSFERENCIA',
-    referencia: pago?.referencia ?? '',
+    referencia: pago?.referencia ?? referenciaSugerida('TRANSFERENCIA', fechaInicial),
     resultado: (pago?.resultado as string) ?? 'APROBADO',
   })
   const v = form.valores
+  // Al editar, o en cuanto la escriben a mano, la referencia ya no se sugiere.
+  const [referenciaManual, setReferenciaManual] = useState(Boolean(pago))
+  const sugerir = (metodo: string, fecha: string) => {
+    if (!referenciaManual) form.poner('referencia', referenciaSugerida(metodo, fecha))
+  }
   const guardar = useMutation({
     mutationFn: () => {
       const comun = { monto: numero(v.monto), fechaPago: desdeFechaHoraLocal(v.fechaPago), metodoPago: v.metodoPago, referencia: v.referencia, resultado: v.resultado }
@@ -127,11 +149,15 @@ function FormularioPago({ pago, empresas, onCerrar }: { pago?: Pago; empresas: {
       )}
       <div className="grid gap-4 sm:grid-cols-2">
         <CampoTexto {...form.campo('monto')} etiqueta="Monto (COP)" obligatorio inputMode="decimal" />
-        <CampoTexto {...form.campo('fechaPago')} etiqueta="Fecha y hora" type="datetime-local" obligatorio />
-        <Selector {...form.campo('metodoPago')} etiqueta="Método" opciones={Object.entries(ETIQUETA_METODO).map(([valor, etiqueta]) => ({ valor, etiqueta }))} />
+        <CampoTexto {...form.campo('fechaPago')} etiqueta="Fecha y hora" type="datetime-local" obligatorio
+          onChange={(e) => { form.poner('fechaPago', e.target.value); sugerir(v.metodoPago, e.target.value) }} />
+        <Selector {...form.campo('metodoPago')} etiqueta="Método" opciones={Object.entries(ETIQUETA_METODO).map(([valor, etiqueta]) => ({ valor, etiqueta }))}
+          onChange={(e) => { form.poner('metodoPago', e.target.value); sugerir(e.target.value, v.fechaPago) }} />
         <Selector {...form.campo('resultado')} etiqueta="Resultado" opciones={[{ valor: 'APROBADO', etiqueta: 'Aprobado' }, { valor: 'FALLIDO', etiqueta: 'Fallido' }]} />
       </div>
-      <CampoTexto {...form.campo('referencia')} etiqueta="Referencia" obligatorio />
+      <CampoTexto {...form.campo('referencia')} etiqueta="Referencia" obligatorio
+        onChange={(e) => { setReferenciaManual(true); form.poner('referencia', e.target.value) }}
+        ayuda={pago ? undefined : 'Sugerida por el sistema. Si tienes el comprobante del banco o de la pasarela, escribe su número.'} />
     </DialogoFormulario>
   )
 }

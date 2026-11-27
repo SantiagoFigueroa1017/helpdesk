@@ -41,6 +41,29 @@ export const ESTADO_TICKET: Record<EstadoTicket, { etiqueta: string; tono: Tono 
   CERRADO: { etiqueta: 'Cerrado', tono: 'neutro' },
 }
 
+/**
+ * Flujo de estados del ticket (decidido en 3.7, igual que EstadoTicket del backend, que es quien lo
+ * hace cumplir): ABIERTO → EN_PROCESO → RESUELTO → CERRADO, con regreso de EN_PROCESO a ABIERTO y de
+ * RESUELTO a EN_PROCESO. El administrador (TICKETS_ASIGNAR_OTROS) además cierra un ABIERTO y reabre
+ * un CERRADO.
+ */
+const FLUJO_TICKET: Record<EstadoTicket, EstadoTicket[]> = {
+  ABIERTO: ['EN_PROCESO'],
+  EN_PROCESO: ['RESUELTO', 'ABIERTO'],
+  RESUELTO: ['CERRADO', 'EN_PROCESO'],
+  CERRADO: [],
+}
+const FLUJO_TICKET_ADMIN: Record<EstadoTicket, EstadoTicket[]> = {
+  ABIERTO: ['CERRADO'],
+  EN_PROCESO: [],
+  RESUELTO: [],
+  CERRADO: ['EN_PROCESO'],
+}
+export const siguientesEstados = (actual: EstadoTicket, administrador: boolean): EstadoTicket[] => [
+  ...FLUJO_TICKET[actual],
+  ...(administrador ? FLUJO_TICKET_ADMIN[actual] : []),
+]
+
 export type TipoTicket = 'INCIDENTE' | 'SUGERENCIA'
 export const ETIQUETA_TIPO_TICKET: Record<TipoTicket, string> = {
   INCIDENTE: 'Incidente',
