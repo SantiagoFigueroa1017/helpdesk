@@ -1,4 +1,7 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { SlidersHorizontal } from 'lucide-react'
+
+import { cn } from '@/lib/cn'
 
 /** Título de una pantalla con su descripción y las acciones principales a la derecha. */
 export function Encabezado({ titulo, descripcion, acciones }: { titulo: ReactNode; descripcion?: ReactNode; acciones?: ReactNode }) {
@@ -13,7 +16,24 @@ export function Encabezado({ titulo, descripcion, acciones }: { titulo: ReactNod
   )
 }
 
-/** Fila de filtros encima de una tabla. */
+/**
+ * Fila de filtros encima de una tabla. En el celular quedan detrás del botón "Filtros" para que el
+ * listado se vea sin desplazarse (tarea 3.7); desde 640 px siempre están a la vista.
+ */
 export function Filtros({ children }: { children: ReactNode }) {
-  return <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{children}</div>
+  const [abierto, setAbierto] = useState(false)
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={abierto}
+        onClick={() => setAbierto((a) => !a)}
+        className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-control border border-borde bg-superficie px-4 text-sm font-medium text-texto hover:bg-superficie-2 sm:hidden"
+      >
+        <SlidersHorizontal aria-hidden className="size-4" />
+        {abierto ? 'Ocultar filtros' : 'Filtros'}
+      </button>
+      <div className={cn('gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-4', abierto ? 'mt-3 grid' : 'hidden')}>{children}</div>
+    </div>
+  )
 }

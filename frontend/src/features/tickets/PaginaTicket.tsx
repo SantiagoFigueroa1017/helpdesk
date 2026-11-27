@@ -185,7 +185,9 @@ export function PaginaTicket() {
           <Comentarios ticketId={t.id} abierto={abierto} />
         </div>
 
-        <div className="flex flex-col gap-6">
+        {/* En el celular los datos, el cambio de estado y el historial van antes de la descripción y los
+            comentarios, para no tener que bajar hasta el final (tarea 3.7). */}
+        <div className="order-first flex flex-col gap-6 lg:order-none">
           <Tarjeta titulo="Datos">
             <dl className="flex flex-col gap-3 text-sm">
               <Dato titulo="Empresa">{t.empresaNombre}</Dato>

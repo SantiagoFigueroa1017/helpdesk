@@ -82,11 +82,13 @@ export function PaginaCapacitaciones() {
               const estado = ESTADO_CAPACITACION[c.estadoVisible]
               const abierta = c.estadoVisible === 'PROGRAMADA'
               return (
-                <li key={c.id} className="flex flex-col rounded-tarjeta border border-borde bg-superficie p-4 shadow-tarjeta">
+                <li key={c.id} className="flex min-w-0 flex-col rounded-tarjeta border border-borde bg-superficie p-4 shadow-tarjeta">
                   <div className="flex flex-wrap items-center gap-2">
                     <Insignia tono={estado.tono}>{estado.etiqueta}</Insignia>
                     <Insignia tono="primario" punto={COLOR_MODULO[c.modulo]}>{ETIQUETA_MODULO[c.modulo]}</Insignia>
-                    <Insignia>{c.tipo === 'MASIVA' ? 'Masiva' : `Personalizada · ${c.empresaNombre ?? ''}`}</Insignia>
+                    <span title={c.empresaNombre ?? undefined} className="max-w-full min-w-0">
+                      <Insignia>{c.tipo === 'MASIVA' ? 'Masiva' : `Personalizada · ${c.empresaNombre ?? ''}`}</Insignia>
+                    </span>
                     {c.miInscripcionId && <Insignia tono="exito">Inscrito</Insignia>}
                   </div>
                   <h2 className="mt-2 font-semibold">{c.titulo}</h2>

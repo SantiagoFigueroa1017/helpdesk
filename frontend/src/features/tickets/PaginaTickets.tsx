@@ -134,7 +134,7 @@ export function PaginaTickets() {
                   const vencido = (t.estado === 'ABIERTO' || t.estado === 'EN_PROCESO') && new Date(t.fechaLimiteRespuesta).getTime() < ahora
                   return (
                     <Tr key={t.id}>
-                      <Td className="max-w-80">
+                      <Td className="min-w-56 max-w-80">
                         <Link to={`/tickets/${t.id}`} className="font-medium hover:text-primario hover:underline">
                           {t.titulo}
                         </Link>

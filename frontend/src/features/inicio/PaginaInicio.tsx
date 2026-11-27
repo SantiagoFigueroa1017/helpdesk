@@ -189,7 +189,7 @@ function Pendientes({ usuario }: { usuario: UsuarioSesion }) {
       <h2 id="pendientes" className="mb-3 text-sm font-semibold text-texto-suave">
         {usuario.alcance === 'GLOBAL' ? 'Tu trabajo' : 'Tus tickets'}
       </h2>
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <ul className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {contadores.map((c, i) => {
           const t = totales[i]
           return (
@@ -198,7 +198,7 @@ function Pendientes({ usuario }: { usuario: UsuarioSesion }) {
                 to={c.ruta}
                 className="flex h-full flex-col rounded-tarjeta border border-borde bg-superficie p-4 shadow-tarjeta transition-colors hover:border-primario/40"
               >
-                <span className="text-sm text-texto-suave">{c.etiqueta}</span>
+                <span className="text-xs text-texto-suave sm:text-sm">{c.etiqueta}</span>
                 <span className="mt-1 text-2xl font-semibold tracking-tight text-texto tabular-nums">
                   {t.isPending ? '…' : t.isError ? '—' : t.data}
                 </span>

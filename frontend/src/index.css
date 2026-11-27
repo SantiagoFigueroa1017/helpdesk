@@ -162,3 +162,76 @@
     }
   }
 }
+
+/*
+ * Tablas como tarjetas en el celular y la tablet, hasta 1023 px (tarea 3.7). La clase la pone <Tabla>, que también copia el texto
+ * de cada encabezado en data-etiqueta. La primera celda es el título de la tarjeta; una columna sin
+ * encabezado (las acciones) va sin etiqueta y alineada a la derecha.
+ */
+@media (max-width: 1023px) {
+  .tabla-adaptable thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .tabla-adaptable,
+  .tabla-adaptable tbody,
+  .tabla-adaptable tr {
+    display: block;
+    width: 100%;
+  }
+  .tabla-adaptable tr {
+    padding: 0.75rem 1rem;
+  }
+  /* Etiqueta a la izquierda y el contenido a la derecha; si la celda trae varios renglones (por ejemplo
+     el contacto: nombre y debajo correo y teléfono), se apilan en la columna derecha. */
+  .tabla-adaptable td {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 1rem;
+    row-gap: 0.125rem;
+    max-width: none;
+    min-width: 0;
+    padding: 0.25rem 0;
+    text-align: right;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .tabla-adaptable td > * {
+    grid-column: 2;
+    justify-self: end;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .tabla-adaptable td::before {
+    content: attr(data-etiqueta);
+    grid-column: 1;
+    grid-row: 1 / span 3;
+    align-self: start;
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    color: var(--hd-texto-suave);
+    text-align: left;
+    overflow-wrap: normal;
+  }
+  .tabla-adaptable td:first-child {
+    display: block;
+    padding-bottom: 0.5rem;
+    text-align: left;
+  }
+  .tabla-adaptable td:first-child::before,
+  .tabla-adaptable td[data-etiqueta='']::before {
+    content: none;
+  }
+  .tabla-adaptable td[data-etiqueta=''] {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .tabla-adaptable td:first-child > * {
+    justify-self: start;
+  }
+}

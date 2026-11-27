@@ -15,9 +15,10 @@ const TONOS: Record<Tono, string> = {
 /** Etiqueta corta de estado o categoría. El color nunca va solo: siempre lleva texto. */
 export function Insignia({ tono = 'neutro', punto, children }: { tono?: Tono; punto?: string; children: ReactNode }) {
   return (
-    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap', TONOS[tono])}>
-      {punto && <span aria-hidden className={cn('size-1.5 rounded-full', punto)} />}
-      {children}
+    <span className={cn('inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap', TONOS[tono])}>
+      {punto && <span aria-hidden className={cn('size-1.5 shrink-0 rounded-full', punto)} />}
+      {/* Un texto largo (por ejemplo el nombre de una empresa) se corta con "…" en vez de ensanchar la tarjeta. */}
+      <span className="truncate">{children}</span>
     </span>
   )
 }
